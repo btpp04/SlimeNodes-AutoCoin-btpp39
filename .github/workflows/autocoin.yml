@@ -1,0 +1,29 @@
+name: SlimeNodes AutoCoin
+
+on:
+  schedule:
+    - cron: '30 0 * * *'   # 00:30 UTC = 08:30 CST
+    - cron: '30 12 * * *'  # 12:30 UTC = 20:30 CST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  earn-coins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run auto-coin
+        env:
+          SLIME_ACCOUNTS: ${{ secrets.SLIME_ACCOUNTS }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          MAX_ADS: 20
+        run: python makecoins.py
