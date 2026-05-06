@@ -175,7 +175,10 @@ def process(tok, lab="acct"):
         time.sleep(random.randint(3, 6))
     
     b1 = bal(s)
-    if b1 is not None: log(f"[{lab}] 最终: {b1}币")
+    if b1 is not None:
+        actual = max(b1 - b0, 0) if b0 is not None else earned
+        log(f"[{lab}] 最终: {b1}币 (本次实际+{actual})")
+        return actual, daily
     return earned, daily
 
 def main():
@@ -205,3 +208,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
