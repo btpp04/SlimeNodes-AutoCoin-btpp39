@@ -188,7 +188,11 @@ def main():
         accts = json.loads(raw)
         if isinstance(accts, str): accts = [{"token": accts}]
         elif isinstance(accts, dict): accts = [accts]
-    except: accts = [{"token": raw}]
+        elif isinstance(accts, list):
+            for i, a in enumerate(accts):
+                if isinstance(a, str): accts[i] = {"token": a}
+        elif isinstance(accts, (int, float)): accts = [{"token": raw}]
+    except (json.JSONDecodeError, ValueError): accts = [{"token": raw}]
     
     total = 0; res = []
     for a in accts:
