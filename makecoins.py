@@ -52,7 +52,7 @@ def discord_oauth(tok):
         er(f"OAuth no code: {body[:150]}"); return None
     code = loc.split("code=")[1].split("&")[0]
     log(f"Code: {code[:6]}...")
-    
+
     # Get session - NO -L (don't follow redirect to /dashboard)
     jar = "/tmp/sn-j.txt"
     hdr = "/tmp/sn-h.txt"
@@ -61,7 +61,7 @@ def discord_oauth(tok):
     cmd += ["-H", f"User-Agent: {UA}",
             f"{BASE}/submitlogin?code={code}"]
     subprocess.run(cmd, timeout=30, capture_output=True)
-    
+
     # Parse session from cookie jar
     try:
         with open(jar) as f:
@@ -71,7 +71,7 @@ def discord_oauth(tok):
                     ok("Session OK")
                     return parts[-1]  # Last field is the value
     except: pass
-    
+
     # Fallback: parse from headers
     try:
         with open(hdr) as f:
@@ -81,7 +81,7 @@ def discord_oauth(tok):
                     ok("Session OK (hdr)")
                     return m.group(1)
     except: pass
-    
+
     er("Session fail"); return None
 
 def ck(s): return f"connect.sid={s}"
@@ -149,7 +149,7 @@ def process(tok, lab="acct"):
     if not s: er(f"[{lab}] 登录失败"); return 0, False
     b0 = bal(s)
     if b0 is not None: log(f"[{lab}] 余额: {b0}币")
-    
+
     earned = 0; bypass = 0; daily = False
     for i in range(MAX):
         cd = cooldown(s)
@@ -173,13 +173,13 @@ def process(tok, lab="acct"):
         elif r == "DAILY_LIMIT": daily = True; break
         else: er(f"[{lab}] {r}")
         time.sleep(random.randint(3, 6))
-    
+
     b1 = bal(s)
     if b1 is not None:
         actual = max(b1 - b0, 0) if b0 is not None else earned
         log(f"[{lab}] 最终: {b1}币 (本次实际+{actual})")
-        return actual, daily
-    return earned, daily
+        return actual, daily, b1
+    return earned, daily, None
 
 def main():
     raw = os.environ.get("SLIME_ACCOUNTS", "").strip()
@@ -193,19 +193,20 @@ def main():
                 if isinstance(a, str): accts[i] = {"token": a}
         elif isinstance(accts, (int, float)): accts = [{"token": raw}]
     except (json.JSONDecodeError, ValueError): accts = [{"token": raw}]
-    
+
     total = 0; res = []
     for a in accts:
         t = a.get("token",""); l = a.get("label", a.get("email", f"acct{len(res)+1}"))
         if not t: er(f"[{l}] 无token"); continue
-        c, d = process(t, l); total += c
-        res.append({"l": l, "c": c, "d": d})
-    
+        c, d, b1 = process(t, l); total += c
+        res.append({"l": l, "c": c, "d": d, "b": b1})
+
     log(f"\n总计: +{total}币")
     lines = ["<b>🟢 SlimeNodes 刷币</b>"]
     for r in res:
         s = "✅" if r["c"]>0 else "❌"; dl = " (上限)" if r["d"] else ""
-        lines.append(f"{s} {r['l']}: +{r['c']}币{dl}")
+        bl = f" | 余额{r['b']}" if r.get("b") is not None else ""
+        lines.append(f"{s} {r['l']}: +{r['c']}币{dl}{bl}")
     lines.append(f"\n💰 总计: +{total}币")
     send_tg("\n".join(lines))
     log("完成!")
