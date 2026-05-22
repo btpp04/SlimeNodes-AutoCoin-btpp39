@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """SlimeNodes Auto-Coin - Pure HTTP, no browser needed."""
+
 import os, sys, re, json, time, base64, random, subprocess
 from urllib.parse import unquote, quote
 from datetime import datetime, timezone
@@ -7,18 +8,25 @@ from datetime import datetime, timezone
 BASE = "https://dash.slimenodes.com"
 CID = "1267847469501513799"
 SCO = "identify email guilds.join"
-CPC = 12  # coins per claim
-WAIT = 16  # min seconds between gen and redeem
+CPC = 12          # coins per claim
+WAIT = 16         # min seconds between gen and redeem
 MAX = int(os.environ.get("MAX_ADS", "20"))
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
 TGT = os.environ.get("TG_BOT_TOKEN", "")
 TGC = os.environ.get("TG_CHAT_ID", "")
 PX = os.environ.get("SOCKS_PROXY", os.environ.get("HTTP_PROXY", ""))
 
-def px(): return ["-x", PX] if PX else []
-def log(m): print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] {m}", flush=True)
-def ok(m): log(f"✅ {m}")
-def er(m): log(f"❌ {m}")
+def px():
+    return ["-x", PX] if PX else []
+
+def log(m):
+    print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] {m}", flush=True)
+
+def ok(m):
+    log(f"✅ {m}")
+
+def er(m):
+    log(f"❌ {m}")
 
 def run_curl(args, timeout=25):
     cmd = ["curl", "-s", "--connect-timeout", "20", "--max-time", str(timeout)] + px() + args
@@ -29,11 +37,11 @@ def run_curl(args, timeout=25):
         return f"ERR:{e}"
 
 def send_tg(msg):
-    if not TGT or not TGC: return
+    if not TGT or not TGC:
+        return
     run_curl(["-s", "-X", "POST", f"https://api.telegram.org/bot{TGT}/sendMessage",
               "-H", "Content-Type: application/json",
-              "-d", json.dumps({"chat_id": TGC, "text": msg, "parse_mode": "HTML"})],
-             timeout=15)
+              "-d", json.dumps({"chat_id": TGC, "text": msg, "parse_mode": "HTML"})], timeout=15)
 
 def discord_oauth(tok):
     log("Discord OAuth...")
@@ -54,12 +62,9 @@ def discord_oauth(tok):
     log(f"Code: {code[:6]}...")
 
     # Get session - NO -L (don't follow redirect to /dashboard)
-    jar = "/tmp/sn-j.txt"
-    hdr = "/tmp/sn-h.txt"
-    cmd = ["curl", "-s", "-c", jar, "-D", hdr,
-           "--connect-timeout", "20", "--max-time", "20"] + px()
-    cmd += ["-H", f"User-Agent: {UA}",
-            f"{BASE}/submitlogin?code={code}"]
+    jar = "/tmp/sn-j.txt"; hdr = "/tmp/sn-h.txt"
+    cmd = ["curl", "-s", "-c", jar, "-D", hdr, "--connect-timeout", "20", "--max-time", "20"] + px()
+    cmd += ["-H", f"User-Agent: {UA}", f"{BASE}/submitlogin?code={code}"]
     subprocess.run(cmd, timeout=30, capture_output=True)
 
     # Parse session from cookie jar
@@ -68,29 +73,30 @@ def discord_oauth(tok):
             for line in f:
                 parts = line.strip().split()
                 if len(parts) >= 7 and "connect.sid" in line:
-                    ok("Session OK")
-                    return parts[-1]  # Last field is the value
-    except: pass
-
+                    ok("Session OK"); return parts[-1]
+    except:
+        pass
     # Fallback: parse from headers
     try:
         with open(hdr) as f:
             for line in f:
                 m = re.search(r'connect\.sid=([^;\s]+)', line)
                 if m:
-                    ok("Session OK (hdr)")
-                    return m.group(1)
-    except: pass
-
+                    ok("Session OK (hdr)"); return m.group(1)
+    except:
+        pass
     er("Session fail"); return None
 
-def ck(s): return f"connect.sid={s}"
+def ck(s):
+    return f"connect.sid={s}"
 
 def cooldown(s):
     body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
                      f"{BASE}/api/lvcooldown"])
-    try: return json.loads(body)
-    except: return {"error": body[:80]}
+    try:
+        return json.loads(body)
+    except:
+        return {"error": body[:80]}
 
 def gen(s):
     hdr = "/tmp/sng.txt"
@@ -108,15 +114,20 @@ def gen(s):
             m = re.search(r'href="(https://link-to\.net/[^"]+)"', body)
             if m: loc = m.group(1)
         if not loc:
-            if "daily" in body.lower() and "limit" in body.lower(): return "DAILY_LIMIT"
-            if "/login" in (loc or body): return "SESSION_EXPIRED"
-            er(f"Gen fail: {body[:120]}"); return None
+            if "daily" in body.lower() and "limit" in body.lower():
+                return "DAILY_LIMIT"
+        if "/login" in (loc or body):
+            return "SESSION_EXPIRED"
+        er(f"Gen fail: {body[:120]}"); return None
         rm = re.search(r'[?&]r=([^&\s]+)', loc)
-        if not rm: er(f"No r: {loc[:60]}"); return None
+        if not rm:
+            er(f"No r: {loc[:60]}"); return None
         rp = unquote(rm.group(1)).replace("-","+").replace("_","/")
         rp += "=" * ((4-len(rp)%4)%4)
-        try: return base64.b64decode(rp).decode()
-        except: er("b64 fail"); return None
+        try:
+            return base64.b64decode(rp).decode()
+        except:
+            er("b64 fail"); return None
     except Exception as e:
         er(f"Gen err: {e}"); return None
 
@@ -143,21 +154,49 @@ def bal(s):
     m = re.search(r'balance\.textContent\s*=\s*Math\.floor\((\d+)\s*\*\s*100\)', body)
     return int(m.group(1)) if m else None
 
+def get_expiry(s, sid=10106):
+    """获取服务器到期时间"""
+    body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
+                     f"{BASE}/lastrenew?id={sid}"])
+    try:
+        data = json.loads(body)
+        ts = data.get("lastrenew", 0)
+        if ts > 0:
+            dt = datetime.fromtimestamp(ts/1000, tz=timezone.utc)
+            now_ms = int(time.time() * 1000)
+            hours = (ts - now_ms) / (1000 * 60 * 60)
+            days = hours / 24
+            return dt.strftime("%m-%d %H:%M UTC"), round(hours), round(days, 1)
+    except:
+        pass
+    return None, None, None
+
 def process(tok, lab="acct"):
     log(f"\n{'='*40}\n账号: {lab}\n{'='*40}")
     s = discord_oauth(tok)
-    if not s: er(f"[{lab}] 登录失败"); return 0, False
+    if not s:
+        er(f"[{lab}] 登录失败"); return 0, False, None, None, None, None
     b0 = bal(s)
-    if b0 is not None: log(f"[{lab}] 余额: {b0}币")
+    if b0 is not None:
+        log(f"[{lab}] 余额: {b0}币")
+
+    # 获取到期时间
+    exp_date, exp_h, exp_d = get_expiry(s)
+    if exp_date:
+        log(f"[{lab}] 到期: {exp_date} (剩余{exp_h}h / {exp_d}天)")
 
     earned = 0; bypass = 0; daily = False
     for i in range(MAX):
         cd = cooldown(s)
-        if cd.get("dailyLimit"): log(f"[{lab}] 每日上限"); daily = True; break
+        if cd.get("dailyLimit"):
+            log(f"[{lab}] 每日上限"); daily = True; break
         ru = gen(s)
-        if ru == "DAILY_LIMIT": daily = True; break
-        if ru == "SESSION_EXPIRED": er(f"[{lab}] Session过期"); break
-        if not ru: er(f"[{lab}] gen失败"); break
+        if ru == "DAILY_LIMIT":
+            daily = True; break
+        if ru == "SESSION_EXPIRED":
+            er(f"[{lab}] Session过期"); break
+        if not ru:
+            er(f"[{lab}] gen失败"); break
         w = WAIT + random.randint(1, 4)
         log(f"[{lab}] 广告{i+1}/{MAX}: 等{w}s...")
         time.sleep(w)
@@ -169,21 +208,25 @@ def process(tok, lab="acct"):
             bypass += 1; er(f"[{lab}] BYPASS")
             if bypass >= 3: break
             time.sleep(10)
-        elif r == "SESSION_EXPIRED": er(f"[{lab}] Session过期"); break
-        elif r == "DAILY_LIMIT": daily = True; break
-        else: er(f"[{lab}] {r}")
+        elif r == "SESSION_EXPIRED":
+            er(f"[{lab}] Session过期"); break
+        elif r == "DAILY_LIMIT":
+            daily = True; break
+        else:
+            er(f"[{lab}] {r}")
         time.sleep(random.randint(3, 6))
 
     b1 = bal(s)
     if b1 is not None:
         actual = max(b1 - b0, 0) if b0 is not None else earned
         log(f"[{lab}] 最终: {b1}币 (本次实际+{actual})")
-        return actual, daily, b1
-    return earned, daily, None
+        return actual, daily, b1, exp_date, exp_h, exp_d
+    return earned, daily, None, exp_date, exp_h, exp_d
 
 def main():
     raw = os.environ.get("SLIME_ACCOUNTS", "").strip()
-    if not raw: er("SLIME_ACCOUNTS未设置!"); sys.exit(1)
+    if not raw:
+        er("SLIME_ACCOUNTS未设置!"); sys.exit(1)
     try:
         accts = json.loads(raw)
         if isinstance(accts, str): accts = [{"token": accts}]
@@ -192,25 +235,36 @@ def main():
             for i, a in enumerate(accts):
                 if isinstance(a, str): accts[i] = {"token": a}
         elif isinstance(accts, (int, float)): accts = [{"token": raw}]
-    except (json.JSONDecodeError, ValueError): accts = [{"token": raw}]
+    except (json.JSONDecodeError, ValueError):
+        accts = [{"token": raw}]
 
     total = 0; res = []
     for a in accts:
         t = a.get("token",""); l = a.get("label", a.get("email", f"acct{len(res)+1}"))
-        if not t: er(f"[{l}] 无token"); continue
-        c, d, b1 = process(t, l); total += c
-        res.append({"l": l, "c": c, "d": d, "b": b1})
+        if not t:
+            er(f"[{l}] 无token"); continue
+        c, d, b1, exp_date, exp_h, exp_d = process(t, l); total += c
+        res.append({"l": l, "c": c, "d": d, "b": b1,
+                     "exp_date": exp_date, "exp_h": exp_h, "exp_d": exp_d})
 
     log(f"\n总计: +{total}币")
+
     lines = ["<b>🟢 SlimeNodes 刷币</b>"]
     for r in res:
         s = "✅" if r["c"]>0 else "❌"; dl = " (上限)" if r["d"] else ""
         bl = f" | 余额{r['b']}" if r.get("b") is not None else ""
         lines.append(f"{s} {r['l']}: +{r['c']}币{dl}{bl}")
     lines.append(f"\n💰 总计: +{total}币")
+
+    # 续期到期信息
+    exp_infos = [(r["l"], r["exp_date"], r["exp_h"], r["exp_d"]) for r in res if r.get("exp_date")]
+    if exp_infos:
+        lines.append("\n📅 续期到期:")
+        for lab, ed, eh, edd in exp_infos:
+            lines.append(f"  {lab}: {ed} (剩余{eh}h / {edd}天)")
+
     send_tg("\n".join(lines))
     log("完成!")
 
 if __name__ == "__main__":
     main()
-
