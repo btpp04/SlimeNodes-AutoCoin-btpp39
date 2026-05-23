@@ -1,218 +1,202 @@
-#!/usr/bin/env python3
-"""SlimeNodes Auto-Coin - Pure HTTP, no browser needed."""
-import os, sys, re, json, time, base64, random, subprocess
-from urllib.parse import unquote, quote
+import os, sys, json, time, re, subprocess
 from datetime import datetime, timezone
 
+CID  = "1267847469501513799"
+SCO  = "identify email guilds.join"
 BASE = "https://dash.slimenodes.com"
-CID = "1267847469501513799"
-SCO = "identify email guilds.join"
-CPC = 12  # coins per claim
-WAIT = 16  # min seconds between gen and redeem
-MAX = int(os.environ.get("MAX_ADS", "20"))
-UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
-TGT = os.environ.get("TG_BOT_TOKEN", "")
-TGC = os.environ.get("TG_CHAT_ID", "")
-PX = os.environ.get("SOCKS_PROXY", os.environ.get("HTTP_PROXY", ""))
+CPC  = 12
+WAIT = 16
+UA   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
 
-def px(): return ["-x", PX] if PX else []
-def log(m): print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] {m}", flush=True)
-def ok(m): log(f"✅ {m}")
-def er(m): log(f"❌ {m}")
+def log(msg):
+    print(msg, flush=True)
 
-def run_curl(args, timeout=25):
-    cmd = ["curl", "-s", "--connect-timeout", "20", "--max-time", str(timeout)] + px() + args
+def px():
+    p = os.environ.get("PROXY_URL", "")
+    return ["--proxy", p, "-x", p] if p else []
+
+def run_curl(*args, timeout=30):
+    cmd = ["curl", "-s", "-m", str(timeout)] + list(args)
+    log(f"  CMD: {' '.join(cmd[:8])}{'...' if len(cmd)>8 else ''}")
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout+10)
         return r.stdout
     except Exception as e:
-        return f"ERR:{e}"
+        log(f"  curl error: {e}")
+        return ""
 
-def send_tg(msg):
-    if not TGT or not TGC: return
-    run_curl(["-s", "-X", "POST", f"https://api.telegram.org/bot{TGT}/sendMessage",
-              "-H", "Content-Type: application/json",
-              "-d", json.dumps({"chat_id": TGC, "text": msg, "parse_mode": "HTML"})],
-             timeout=15)
-
+# ─── OAuth ───
 def discord_oauth(tok):
-    log("Discord OAuth...")
-    url = (f"https://discord.com/api/v9/oauth2/authorize"
-           f"?client_id={CID}&scope={quote(SCO)}"
-           f"&response_type=code&redirect_uri={quote(BASE+'/callback',safe='')}")
-    body = run_curl(["-X", "POST", "-H", f"User-Agent: {UA}",
-                     "-H", "Authorization: " + tok,
-                     "-H", "Content-Type: application/json",
-                     "-d", json.dumps({"authorize": True}), url])
+    url  = f"https://discord.com/api/v9/oauth2/authorize?client_id={CID}&scope={SCO}&response_type=code&redirect_uri={BASE}/callback"
+    hdrs = ["-H", f"Authorization: {tok}", "-H", "Content-Type: application/json",
+            "-H", f"User-Agent: {UA}", "-d", '{"authorize":true}']
+    out  = run_curl(*px(), *hdrs, url)
     try:
-        loc = json.loads(body).get("location", "")
+        j = json.loads(out)
+        code = j.get("location", "").split("code=")[-1] if "location" in j else j.get("code","")
+        if not code or len(code) < 5:
+            log(f"❌ OAuth no code: {out[:200]}")
+            return None
+        return code
     except:
-        er(f"OAuth fail: {body[:150]}"); return None
-    if "code=" not in loc:
-        er(f"OAuth no code: {body[:150]}"); return None
-    code = loc.split("code=")[1].split("&")[0]
-    log(f"Code: {code[:6]}...")
+        log(f"❌ OAuth parse error: {out[:200]}")
+        return None
 
-    # Get session - NO -L (don't follow redirect to /dashboard)
-    jar = "/tmp/sn-j.txt"
-    hdr = "/tmp/sn-h.txt"
-    cmd = ["curl", "-s", "-c", jar, "-D", hdr,
-           "--connect-timeout", "20", "--max-time", "20"] + px()
-    cmd += ["-H", f"User-Agent: {UA}",
-            f"{BASE}/submitlogin?code={code}"]
-    subprocess.run(cmd, timeout=30, capture_output=True)
+def get_session(code):
+    out = run_curl(*px(), "-D", "-", f"{BASE}/callback?code={code}")
+    sid = ""
+    for line in out.splitlines():
+        if "set-cookie" in line.lower() and "connect.sid" in line:
+            m = re.search(r'connect\.sid=([^;]+)', line)
+            if m: sid = m.group(1); break
+    if not sid:
+        m = re.search(r'connect\.sid=([^;\s]+)', out)
+        if m: sid = m.group(1)
+    return sid
 
-    # Parse session from cookie jar
+# ─── Balance & Servers ───
+def get_balance(sid):
+    hdrs = ["-H", f"Cookie: connect.sid={sid}", "-H", f"User-Agent: {UA}"]
+    out = run_curl(*px(), *hdrs, f"{BASE}/api/user")
     try:
-        with open(jar) as f:
-            for line in f:
-                parts = line.strip().split()
-                if len(parts) >= 7 and "connect.sid" in line:
-                    ok("Session OK")
-                    return parts[-1]  # Last field is the value
-    except: pass
+        j = json.loads(out)
+        return j.get("coins", j.get("balance", 0))
+    except:
+        log(f"  balance parse error: {out[:100]}")
+        return 0
 
-    # Fallback: parse from headers
+def get_servers(sid):
+    """Fetch server list and return expiry info."""
+    hdrs = ["-H", f"Cookie: connect.sid={sid}", "-H", f"User-Agent: {UA}"]
+    out = run_curl(*px(), *hdrs, f"{BASE}/api/servers")
     try:
-        with open(hdr) as f:
-            for line in f:
-                m = re.search(r'connect\.sid=([^;\s]+)', line)
-                if m:
-                    ok("Session OK (hdr)")
-                    return m.group(1)
-    except: pass
+        servers = json.loads(out)
+        if isinstance(servers, list):
+            return servers
+        if isinstance(servers, dict) and "servers" in servers:
+            return servers["servers"]
+        return []
+    except:
+        log(f"  servers parse error: {out[:100]}")
+        return []
 
-    er("Session fail"); return None
+def format_expiry(servers):
+    """Format server expiry info for notification."""
+    if not servers:
+        return "无服务器"
+    lines = []
+    now = datetime.now(timezone.utc)
+    for s in servers:
+        name = s.get("name", s.get("hostname", "server"))
+        exp = s.get("expires_at") or s.get("expiresAt") or s.get("expire", "")
+        if exp:
+            try:
+                # Try ISO format
+                if exp.endswith("Z"):
+                    exp = exp[:-1] + "+00:00"
+                dt = datetime.fromisoformat(exp)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                remain = dt - now
+                days = remain.total_seconds() / 86400
+                if days > 0:
+                    lines.append(f"{name}: {days:.1f}天")
+                else:
+                    lines.append(f"{name}: ❌已过期")
+            except:
+                lines.append(f"{name}: {exp}")
+        else:
+            lines.append(f"{name}: 未知")
+    return " | ".join(lines)
 
-def ck(s): return f"connect.sid={s}"
-
-def cooldown(s):
-    body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
-                     f"{BASE}/api/lvcooldown"])
-    try: return json.loads(body)
-    except: return {"error": body[:80]}
-
-def gen(s):
-    hdr = "/tmp/sng.txt"
-    cmd = ["curl", "-s", "-D", hdr, "--connect-timeout", "20", "--max-time", "20"] + px()
-    cmd += ["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
-            "-H", f"Referer: {BASE}/lv", f"{BASE}/lv/gen"]
+# ─── Watch Ad ───
+def watch_ad(sid):
+    hdrs = ["-H", f"Cookie: connect.sid={sid}", "-H", f"User-Agent: {UA}",
+            "-H", "Content-Type: application/json", "-X", "POST"]
+    out = run_curl(*px(), *hdrs, f"{BASE}/api/redeem-ad")
     try:
-        body = subprocess.run(cmd, capture_output=True, text=True, timeout=25).stdout
-        loc = ""
-        with open(hdr) as f:
-            for line in f:
-                if line.lower().startswith("location:"):
-                    loc = line.split(":",1)[1].strip(); break
-        if not loc:
-            m = re.search(r'href="(https://link-to\.net/[^"]+)"', body)
-            if m: loc = m.group(1)
-        if not loc:
-            if "daily" in body.lower() and "limit" in body.lower(): return "DAILY_LIMIT"
-            if "/login" in (loc or body): return "SESSION_EXPIRED"
-            er(f"Gen fail: {body[:120]}"); return None
-        rm = re.search(r'[?&]r=([^&\s]+)', loc)
-        if not rm: er(f"No r: {loc[:60]}"); return None
-        rp = unquote(rm.group(1)).replace("-","+").replace("_","/")
-        rp += "=" * ((4-len(rp)%4)%4)
-        try: return base64.b64decode(rp).decode()
-        except: er("b64 fail"); return None
-    except Exception as e:
-        er(f"Gen err: {e}"); return None
+        j = json.loads(out)
+        if j.get("coins", 0) > 0 or j.get("success"):
+            return True
+        log(f"  ad resp: {out[:120]}")
+        return False
+    except:
+        log(f"  ad error: {out[:120]}")
+        return False
 
-def red(s, url):
-    hdr = "/tmp/snr.txt"
-    cmd = ["curl", "-s", "-D", hdr, "--connect-timeout", "20", "--max-time", "20"] + px()
-    cmd += ["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
-            "-H", "Referer: https://linkvertise.com/", url]
-    subprocess.run(cmd, capture_output=True, text=True, timeout=25)
-    loc = ""
-    with open(hdr) as f:
-        for line in f:
-            if line.lower().startswith("location:"):
-                loc = line.split(":",1)[1].strip(); break
-    if "success=true" in loc: return "OK"
-    if "LVBYPASSERROR" in loc: return "BYPASS"
-    if "/login" in loc: return "SESSION_EXPIRED"
-    if "daily" in loc.lower(): return "DAILY_LIMIT"
-    return f"UNK:{loc[:40]}"
+# ─── Process One Account ───
+def process(tok, label=""):
+    code = discord_oauth(tok)
+    if not code:
+        return 0, 0, ""
 
-def bal(s):
-    body = run_curl(["-L", "-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
-                     f"{BASE}/dashboard"])
-    m = re.search(r'balance\.textContent\s*=\s*Math\.floor\((\d+)\s*\*\s*100\)', body)
-    return int(m.group(1)) if m else None
+    sid = get_session(code)
+    if not sid:
+        log("❌ No session cookie")
+        return 0, 0, ""
 
-def process(tok, lab="acct"):
-    log(f"\n{'='*40}\n账号: {lab}\n{'='*40}")
-    s = discord_oauth(tok)
-    if not s: er(f"[{lab}] 登录失败"); return 0, False
-    b0 = bal(s)
-    if b0 is not None: log(f"[{lab}] 余额: {b0}币")
+    # verify
+    b0 = get_balance(sid)
+    log(f"✅ Session OK | balance={b0}")
 
-    earned = 0; bypass = 0; daily = False
-    for i in range(MAX):
-        cd = cooldown(s)
-        if cd.get("dailyLimit"): log(f"[{lab}] 每日上限"); daily = True; break
-        ru = gen(s)
-        if ru == "DAILY_LIMIT": daily = True; break
-        if ru == "SESSION_EXPIRED": er(f"[{lab}] Session过期"); break
-        if not ru: er(f"[{lab}] gen失败"); break
-        w = WAIT + random.randint(1, 4)
-        log(f"[{lab}] 广告{i+1}/{MAX}: 等{w}s...")
-        time.sleep(w)
-        r = red(s, ru)
-        if r == "OK":
-            earned += CPC; bypass = 0
-            ok(f"[{lab}] +{CPC}币 (累计+{earned})")
-        elif r == "BYPASS":
-            bypass += 1; er(f"[{lab}] BYPASS")
-            if bypass >= 3: break
-            time.sleep(10)
-        elif r == "SESSION_EXPIRED": er(f"[{lab}] Session过期"); break
-        elif r == "DAILY_LIMIT": daily = True; break
-        else: er(f"[{lab}] {r}")
-        time.sleep(random.randint(3, 6))
+    # get servers expiry
+    servers = get_servers(sid)
+    exp_info = format_expiry(servers)
+    log(f"  📅 Servers: {exp_info}")
 
-    b1 = bal(s)
-    if b1 is not None:
-        actual = max(b1 - b0, 0) if b0 is not None else earned
-        log(f"[{lab}] 最终: {b1}币 (本次实际+{actual})")
-        return actual, daily, b1
-    return earned, daily, None
+    earned = 0
+    for i in range(20):
+        if watch_ad(sid):
+            earned += CPC
+            log(f"  +{CPC}币 ({i+1}/20)")
+        else:
+            log(f"  ❌ claim {i+1} failed")
+        if i < 19:
+            time.sleep(WAIT)
 
+    b1 = get_balance(sid)
+    return b0, b1, exp_info
+
+# ─── TG Notify ───
+def send_tg(msg):
+    bt = os.environ.get("TG_BOT_TOKEN", "")
+    ci = os.environ.get("TG_CHAT_ID", "")
+    if not bt or not ci:
+        log("⚠️ TG not configured, skip notify")
+        return
+    run_curl("-s", "-X", "POST", f"https://api.telegram.org/bot{bt}/sendMessage",
+             "-H", "Content-Type: application/json",
+             "-d", json.dumps({"chat_id": ci, "text": msg, "parse_mode": "HTML"}))
+
+# ─── Main ───
 def main():
-    raw = os.environ.get("SLIME_ACCOUNTS", "").strip()
-    if not raw: er("SLIME_ACCOUNTS未设置!"); sys.exit(1)
-    try:
-        accts = json.loads(raw)
-        if isinstance(accts, str): accts = [{"token": accts}]
-        elif isinstance(accts, dict): accts = [accts]
-        elif isinstance(accts, list):
-            for i, a in enumerate(accts):
-                if isinstance(a, str): accts[i] = {"token": a}
-        elif isinstance(accts, (int, float)): accts = [{"token": raw}]
-    except (json.JSONDecodeError, ValueError): accts = [{"token": raw}]
+    accts = json.loads(os.environ.get("SLIME_ACCOUNTS", "[]"))
+    if not accts:
+        log("❌ No SLIME_ACCOUNTS configured"); return
 
-    total = 0; res = []
-    for a in accts:
-        t = a.get("token",""); l = a.get("label", a.get("email", f"acct{len(res)+1}"))
-        if not t: er(f"[{l}] 无token"); continue
-        c, d, b1 = process(t, l); total += c
-        res.append({"l": l, "c": c, "d": d, "b": b1})
-
-    log(f"\n总计: +{total}币")
+    total = 0
+    parts = []
     dt = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    for a in accts:
+        label = a.get("label", "unknown")
+        tok   = a.get("token", "")
+        if not tok:
+            log(f"⚠️ No token for {label}"); continue
+
+        log(f"\n{'='*40}")
+        log(f"▶ {label}")
+        b0, b1, exp_info = process(tok, label)
+        diff = b1 - b0
+        total += diff
+        log(f"  earned={diff}  balance={b1}")
+        parts.append(f"✅ {label}: +{diff}币 | 余额{b1} | 📅{exp_info}")
+
+    # notify
     lines = [f"<b>🟢 SlimeNodes 刷币</b>  {dt}"]
-    for r in res:
-        s = "✅" if r["c"]>0 else "❌"; dl = " (上限)" if r["d"] else ""
-        bl = f" | 余额{r['b']}" if r.get("b") is not None else ""
-        lines.append(f"{s} {r['l']}: +{r['c']}币{dl}{bl}")
-    lines.append(f"\n💰 总计: +{total}币")
+    lines.extend(parts)
+    lines.append(f"💰 总计: +{total}币")
     send_tg("\n".join(lines))
-    log("完成!")
 
 if __name__ == "__main__":
     main()
-
-
