@@ -47,8 +47,6 @@ def send_tg(msg):
 
 def discord_oauth(tok):
     log("Discord OAuth...")
-    log(f"DEBUG PX={PX!r} px()={px()!r}")
-    log(f"DEBUG tok len={len(tok)} prefix={tok[:10]}... suffix=...{tok[-5:]}")
     url = (f"https://discord.com/api/v9/oauth2/authorize"
            f"?client_id={CID}&scope={quote(SCO)}"
            f"&response_type=code&redirect_uri={quote(BASE+'/callback',safe='')}")
