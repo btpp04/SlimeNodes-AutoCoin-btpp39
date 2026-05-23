@@ -6,6 +6,7 @@ log = lambda *a: print(*a, flush=True)
 
 # ── proxy helpers ──────────────────────────────────────────────
 PX = os.environ.get("SOCKS_PROXY") or os.environ.get("HTTP_PROXY") or ""
+log(f"MODULE_LEVEL: SOCKS_PROXY={os.environ.get('SOCKS_PROXY','')!r} PX={PX!r}")
 
 def px():
     if not PX:
