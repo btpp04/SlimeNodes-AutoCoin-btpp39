@@ -6,7 +6,7 @@ log = lambda *a: print(*a, flush=True)
 
 # ── proxy helpers ──────────────────────────────────────────────
 PX = os.environ.get("SOCKS_PROXY") or os.environ.get("HTTP_PROXY") or ""
-log(f"MODULE_LEVEL: SOCKS_PROXY={os.environ.get('SOCKS_PROXY','')!r} PX={PX!r}")
+log(f"DEBUG: SOCKS_PROXY={os.environ.get('SOCKS_PROXY','<MISSING>')!r} PX={PX!r}")
 
 def px():
     if not PX:
@@ -18,9 +18,11 @@ def px():
 def run_curl(args, timeout=30):
     base = ["curl", "-s", "--connect-timeout", "20", "--max-time", str(timeout)]
     cmd = base + px() + args
-    log(f"  CMD: {' '.join(cmd[:8])}...")  # debug: show first 8 args
+    log(f"  CMD: {' '.join(cmd)}")
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout+5)
+        if r.stderr:
+            log(f"  curl stderr: {r.stderr[:200]}")
         return r.stdout.strip()
     except Exception as e:
         log(f"  curl error: {e}")
@@ -34,8 +36,7 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 
 def discord_oauth(tok):
     log("Discord OAuth...")
-    log(f"  DEBUG PX={PX!r} px()={px()!r}")
-    log(f"  DEBUG tok len={len(tok)} prefix={tok[:10]}... suffix=...{tok[-5:]}")
+    log(f"  tok len={len(tok)} prefix={tok[:15]}...")
     from urllib.parse import quote
     url = (
         f"https://discord.com/api/v9/oauth2/authorize"
@@ -66,20 +67,20 @@ def discord_oauth(tok):
 # ── SlimeNodes session ────────────────────────────────────────
 def get_session(code):
     log("Getting SlimeNodes session...")
-    out = subprocess.run([
+    r = subprocess.run([
         "curl", "-s", "-D", "-", "--connect-timeout", "20", "--max-time", "25",
         *px(),
         f"{BASE}/callback?code={code}",
     ], capture_output=True, text=True, timeout=30)
     cookie = ""
-    for line in out.stdout.splitlines():
+    for line in r.stdout.splitlines():
         m = re.match(r"set-cookie:\s*([^=]+)=([^;]+)", line, re.I)
         if m:
             cookie = f"{m.group(1)}={m.group(2)}"
     if cookie:
-        log(f"  Session ✅ cookie={cookie[:20]}...")
+        log(f"  Session ✅ cookie={cookie[:30]}...")
         return cookie
-    log(f"  Session ❌ no cookie in:\n{out.stdout[:300]}")
+    log(f"  Session ❌ no cookie in:\n{r.stdout[:300]}")
     return None
 
 # ── Coin operations ────────────────────────────────────────────
@@ -121,34 +122,49 @@ def renew_server(cookie, sid):
 
 # ── main ───────────────────────────────────────────────────────
 def main():
-    accounts_raw = os.environ.get("SLIME_ACCOUNTS", "")
-    if not accounts_raw:
-        log("No SLIME_ACCOUNTS env var"); return
+    raw = os.environ.get("SLIME_ACCOUNTS", "").strip()
+    if not raw:
+        log("❌ SLIME_ACCOUNTS not set"); return
 
+    # Parse accounts - supports JSON format (list of dicts with "token" key)
+    try:
+        accts = json.loads(raw)
+        if isinstance(accts, str):
+            accts = [{"token": accts}]
+        elif isinstance(accts, dict):
+            accts = [accts]
+    except:
+        # Fallback: treat as plain token string
+        accts = [{"token": raw}]
+
+    log(f"Parsed {len(accts)} account(s)")
     max_ads = int(os.environ.get("MAX_ADS", "20"))
     total_coins = 0
 
-    for line in accounts_raw.strip().splitlines():
-        parts = line.strip().split(":", 2)
-        if len(parts) < 3:
-            log(f"Skip bad line: {line[:30]}..."); continue
-        name, email, tok = parts[0], parts[1], parts[2]
+    for a in accts:
+        tok = a.get("token", "")
+        label = a.get("label", a.get("email", f"acct"))
+        if not tok:
+            log(f"❌ [{label}] no token, skipping"); continue
+
         log(f"\n{'='*40}")
-        log(f"Account: {name}")
+        log(f"Account: {label}")
+        log(f"  token len={len(tok)} prefix={tok[:12]}...")
 
         # OAuth
         code = discord_oauth(tok)
         if not code:
-            log(f"❌ {name}: OAuth failed, skipping")
+            log(f"❌ {label}: OAuth failed, skipping")
+            total_coins += 0
             continue
 
         # Session
         sess = get_session(code)
         if not sess:
-            log(f"❌ {name}: session failed, skipping")
+            log(f"❌ {label}: session failed, skipping")
             continue
 
-        # Check balance first
+        # Check balance before
         coins_before, servers = get_balance(sess)
         log(f"  Balance before: {coins_before}, servers: {len(servers)}")
 
@@ -162,8 +178,9 @@ def main():
                 earned += 12
                 log(f"  Ad #{i+1}: ✅ +12 (total +{earned})")
             else:
-                log(f"  Ad #{i+1}: ❌ {r}")
-                if "limit" in str(r).lower() or "max" in str(r).lower():
+                msg = r.get("message", str(r))
+                log(f"  Ad #{i+1}: ❌ {msg}")
+                if "limit" in str(r).lower() or "max" in str(r).lower() or "cooldown" in str(r).lower():
                     break
             time.sleep(16)
 
@@ -173,7 +190,7 @@ def main():
         log(f"  Balance after: {coins_after} (Δ={diff})")
         total_coins += diff
 
-        # Renew server if expiring soon
+        # Renew servers if expiring soon
         for s in servers:
             sid = s.get("id") or s.get("server_id")
             exp = s.get("expires") or s.get("expiry", "")
@@ -189,7 +206,7 @@ def main():
     bot_tok = os.environ.get("TG_BOT_TOKEN", "")
     chat_id = os.environ.get("TG_CHAT_ID", "")
     if bot_tok and chat_id:
-        msg = f"🟢 SlimeNodes 刷币\n✅ 39btpp: +{total_coins}币\n💰 总计: +{total_coins}币"
+        msg = f"🟢 SlimeNodes 刷币\n✅ +{total_coins}币\n💰 总计: +{total_coins}币"
         run_curl([
             f"https://api.telegram.org/bot{bot_tok}/sendMessage",
             "-d", f"chat_id={chat_id}",
