@@ -1,9 +1,10 @@
 name: Earn SlimeNodes Coins
+
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 0 * * *"  # 00:30 UTC daily
-    - cron: "30 12 * * *" # 12:30 UTC daily
+    - cron: "30 0 * * *"
+    - cron: "30 12 * * *"
 
 jobs:
   earn:
@@ -13,29 +14,26 @@ jobs:
 
       - name: Setup sing-box proxy
         run: |
-          curl -fsSL https://github.com/SagerNet/sing-box/releases/download/v1.11.0/sing-box-1.11.0-linux-amd64.tar.gz | tar xz
-          sudo mv sing-box-1.11.0-linux-amd64/sing-box /usr/local/bin/
-
-          # Generate sing-box config from proxy link
+          curl -sL https://github.com/SagerNet/sing-box/releases/download/v1.11.3/sing-box-1.11.3-linux-amd64.tar.gz | tar xz
+          mv sing-box-1.11.3-linux-amd64/sing-box /usr/local/bin/
           python3 link_to_sb.py "$VLINK" > /tmp/sing-box.json
-          echo "::notice::sing-box config generated"
-          cat /tmp/sing-box.json
-
-          nohup sing-box run -c /tmp/sing-box.json &>/tmp/sing-box.log &
+          sing-box run -c /tmp/sing-box.json &
           sleep 3
-
-          # Test proxy connectivity
-          echo "Testing proxy..."
-          curl -s --proxy socks5h://127.0.0.1:1080 https://httpbin.org/ip || echo "Proxy test failed"
+          curl -s --proxy socks5h://127.0.0.1:1080 https://ifconfig.me
+          echo ""
         env:
-          VLINK: ${{ secrets.VLINK }}
+          VLINK: "${{ secrets.VLINK }}"
 
       - name: Run auto-coin
         run: |
+          echo "DEBUG: SOCKS_PROXY before export = '$SOCKS_PROXY'"
           export SOCKS_PROXY="socks5h://127.0.0.1:1080"
+          echo "DEBUG: SOCKS_PROXY after export = '$SOCKS_PROXY'"
+          echo "DEBUG: env | grep SOCKS"
+          env | grep SOCKS || echo "No SOCKS in env!"
           python3 makecoins.py
         env:
-          SLIME_ACCOUNTS: ${{ secrets.SLIME_ACCOUNTS }}
-          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-          MAX_ADS: "20"
+          SOCKS_PROXY: "socks5h://127.0.0.1:1080"
+          SLIME_ACCOUNTS: "${{ secrets.SLIME_ACCOUNTS }}"
+          TG_BOT_TOKEN: "${{ secrets.TG_BOT_TOKEN }}"
+          TG_CHAT_ID: "${{ secrets.TG_CHAT_ID }}"
