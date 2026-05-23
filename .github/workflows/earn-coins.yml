@@ -1,0 +1,72 @@
+name: Earn SlimeNodes Coins
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 0 * * *"   # 00:30 UTC daily
+    - cron: "30 12 * * *"  # 12:30 UTC daily
+
+jobs:
+  earn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup sing-box proxy
+        run: |
+          curl -fsSL https://github.com/SagerNet/sing-box/releases/download/v1.11.0/sing-box-1.11.0-linux-amd64.tar.gz | tar xz
+          sudo mv sing-box-1.11.0-linux-amd64/sing-box /usr/local/bin/
+
+          cat > /tmp/sing-box.json << SBEOF
+          {
+            "inbounds": [
+              {
+                "type": "socks",
+                "tag": "socks-in",
+                "listen": "127.0.0.1",
+                "listen_port": 1080
+              }
+            ],
+            "outbounds": [
+              {
+                "type": "hysteria2",
+                "tag": "hy2-out",
+                "server": "${HY2_SERVER}",
+                "server_port": 443,
+                "password": "${HY2_PASSWORD}",
+                "tls": {
+                  "enabled": true,
+                  "server_name": "${HY2_SNI}"
+                }
+              }
+            ]
+          }
+          SBEOF
+
+          # Replace placeholders with actual values
+          HY2_URL="${HY2_PROXY_URL}"
+          # Parse hy2 URL: hysteria2://password@server:port?sni=xxx
+          HY2_PASS=$(echo "$HY2_URL" | sed 's|hysteria2://||;s|@.*||')
+          HY2_SRV=$(echo "$HY2_URL" | sed 's|.*@||;s|:.*||')
+          HY2_SNI_VAL=$(echo "$HY2_URL" | grep -oP 'sni=\K[^&]+' || echo "$HY2_SRV")
+
+          sed -i "s|\${HY2_SERVER}|$HY2_SRV|g" /tmp/sing-box.json
+          sed -i "s|\${HY2_PASSWORD}|$HY2_PASS|g" /tmp/sing-box.json
+          sed -i "s|\${HY2_SNI}|$HY2_SNI_VAL|g" /tmp/sing-box.json
+
+          nohup sing-box run -c /tmp/sing-box.json &>/tmp/sing-box.log &
+          sleep 3
+          # Test proxy
+          curl -s --socks5 127.0.0.1:1080 https://httpbin.org/ip || echo "Proxy test failed"
+        env:
+          HY2_PROXY_URL: ${{ secrets.HY2_PROXY_URL }}
+
+      - name: Run auto-coin
+        run: |
+          export SOCKS_PROXY="socks5://127.0.0.1:1080"
+          python3 makecoins.py
+        env:
+          SLIME_ACCOUNTS: ${{ secrets.SLIME_ACCOUNTS }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          MAX_ADS: "20"
