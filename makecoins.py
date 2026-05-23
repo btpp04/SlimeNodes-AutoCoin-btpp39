@@ -17,7 +17,9 @@ TGC = os.environ.get("TG_CHAT_ID", "")
 PX = os.environ.get("SOCKS_PROXY", os.environ.get("HTTP_PROXY", ""))
 
 def px():
-    return ["-x", PX] if PX else []
+    if not PX: return []
+    p = PX.replace("socks5://", "socks5h://") if PX.startswith("socks5://") else PX
+    return ["--proxy", p]
 
 def log(m):
     print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] {m}", flush=True)
