@@ -2,8 +2,8 @@ name: Earn SlimeNodes Coins
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 0 * * *"  # 00:30 UTC daily
-    - cron: "30 12 * * *" # 12:30 UTC daily
+    - cron: "30 0 * * *"   # 00:30 UTC daily
+    - cron: "30 12 * * *"  # 12:30 UTC daily
 
 jobs:
   earn:
@@ -35,7 +35,7 @@ jobs:
           export SOCKS_PROXY="socks5h://127.0.0.1:1080"
           python3 makecoins.py
         env:
-          SLIME_ACCOUNTS: ${{ secrets.SLIME_ACCOUNTS }}
-          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          SLIME_ACCOUNTS: "${{ secrets.SLIME_ACCOUNTS }}"
+          TG_BOT_TOKEN: "${{ secrets.TG_BOT_TOKEN }}"
+          TG_CHAT_ID: "${{ secrets.TG_CHAT_ID }}"
           MAX_ADS: "20"
