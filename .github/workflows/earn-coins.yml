@@ -28,7 +28,7 @@ jobs:
           echo "Testing proxy..."
           curl -s --proxy socks5h://127.0.0.1:1080 https://httpbin.org/ip || echo "Proxy test failed"
         env:
-          VLINK: ${{ secrets.VLINK }}
+          VLINK: "${{ secrets.VLINK }}"
 
       - name: Run auto-coin
         run: |
