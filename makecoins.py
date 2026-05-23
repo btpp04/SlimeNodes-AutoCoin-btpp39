@@ -202,7 +202,8 @@ def main():
         res.append({"l": l, "c": c, "d": d, "b": b1})
 
     log(f"\n总计: +{total}币")
-    lines = ["<b>🟢 SlimeNodes 刷币</b>"]
+    dt = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    lines = [f"<b>🟢 SlimeNodes 刷币</b>  {dt}"]
     for r in res:
         s = "✅" if r["c"]>0 else "❌"; dl = " (上限)" if r["d"] else ""
         bl = f" | 余额{r['b']}" if r.get("b") is not None else ""
@@ -213,4 +214,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
