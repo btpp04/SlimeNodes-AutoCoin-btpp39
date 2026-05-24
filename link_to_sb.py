@@ -6,12 +6,9 @@ def parse_vmess(link):
     data = base64.urlsafe_b64decode(link.split("://")[1] + "==").decode('utf-8')
     config = json.loads(data)
     outbound = {
-        "type": "vmess",
-        "tag": config.get("ps", "vmess-out"),
-        "server": config["add"],
-        "server_port": int(config["port"]),
-        "uuid": config["id"],
-        "security": config.get("scy", "auto"),
+        "type": "vmess", "tag": config.get("ps", "vmess-out"),
+        "server": config["add"], "server_port": int(config["port"]),
+        "uuid": config["id"], "security": config.get("scy", "auto"),
         "alter_id": int(config.get("aid", 0)),
     }
     if config.get("net") == "ws":
@@ -26,16 +23,21 @@ def parse_vmess(link):
         outbound["transport"] = transport
     if config.get("tls") == "tls":
         alpn_list = config.get("alpn", "").split(",") if config.get("alpn") else []
-        outbound["tls"] = {"enabled": True, "server_name": config.get("sni") or config.get("host", ""), "insecure": config.get("insecure", "0") == "1", "alpn": alpn_list, "utls": {"enabled": True, "fingerprint": config.get("fp", "chrome")}}
+        outbound["tls"] = {"enabled": True, "server_name": config.get("sni") or config.get("host", ""),
+            "insecure": config.get("insecure", "0") == "1", "alpn": alpn_list,
+            "utls": {"enabled": True, "fingerprint": config.get("fp", "chrome")}}
     return outbound
 
 def parse_vless(link):
     parsed = urllib.parse.urlparse(link)
     query = urllib.parse.parse_qs(parsed.query)
-    outbound = {"type": "vless", "tag": "vless-out", "server": parsed.hostname, "server_port": parsed.port, "uuid": parsed.username}
+    outbound = {"type": "vless", "tag": "vless-out", "server": parsed.hostname,
+        "server_port": parsed.port, "uuid": parsed.username}
     if query.get("security") == ["tls"]:
         alpn_list = query.get("alpn", [""])[0].split(",") if query.get("alpn") else []
-        outbound["tls"] = {"enabled": True, "server_name": query.get("sni", [None])[0] or "", "insecure": query.get("allowInsecure", ["0"])[0] == "1", "alpn": alpn_list, "utls": {"enabled": True, "fingerprint": query.get("fp", ["chrome"])[0]}}
+        outbound["tls"] = {"enabled": True, "server_name": query.get("sni", [None])[0] or "",
+            "insecure": query.get("allowInsecure", ["0"])[0] == "1", "alpn": alpn_list,
+            "utls": {"enabled": True, "fingerprint": query.get("fp", ["chrome"])[0]}}
     if query.get("type") == ["ws"]:
         transport = {"type": "ws", "headers": {"Host": query.get("host", [""])[0]} if query.get("host") else {}}
         path = query.get("path", ["/"])[0]
@@ -56,10 +58,8 @@ def parse_hysteria2(link):
     sni = query.get("peer", [None])[0] or query.get("sni", [None])[0] or parsed.hostname
     insecure = query.get("insecure", ["0"])[0] == "1"
     outbound = {
-        "type": "hysteria2",
-        "tag": "hy2-out",
-        "server": parsed.hostname,
-        "server_port": parsed.port,
+        "type": "hysteria2", "tag": "hy2-out",
+        "server": parsed.hostname, "server_port": parsed.port,
         "password": parsed.username,
         "tls": {"enabled": True, "server_name": sni, "insecure": insecure}
     }
@@ -79,8 +79,10 @@ if __name__ == "__main__":
         print(f"不支持的链接类型: {link[:20]}..."); sys.exit(1)
     full_config = {
         "log": {"level": "info"},
-        "inbounds": [{"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 1080, "sniff": True, "sniff_override_destination": True}],
+        "inbounds": [{"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1",
+            "listen_port": 1080, "sniff": True, "sniff_override_destination": True}],
         "outbounds": [outbound],
         "route": {"final": outbound["tag"]}
     }
     print(json.dumps(full_config, indent=2))
+
