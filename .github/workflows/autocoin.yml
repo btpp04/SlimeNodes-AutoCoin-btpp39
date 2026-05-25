@@ -17,10 +17,16 @@ jobs:
           curl -fsSL https://github.com/SagerNet/sing-box/releases/download/v1.11.0/sing-box-1.11.0-linux-amd64.tar.gz | tar xz
           sudo mv sing-box-1.11.0-linux-amd64/sing-box /usr/local/bin/
           sudo chmod +x /usr/local/bin/sing-box
-          python3 link_to_sb.py "$VLINK" > /tmp/sb.json
-          sing-box run -c /tmp/sb.json &
-          sleep 3
-          curl -s --socks5 127.0.0.1:1080 https://httpbin.org/ip && echo "Proxy OK" || echo "Proxy failed"
+          python3 link_to_sb.py "$VLINK" > /tmp/sb.json 2>/tmp/sb_err.txt || { echo "link_to_sb.py failed:"; cat /tmp/sb_err.txt; exit 1; }
+          cat /tmp/sb.json | head -5
+          nohup sing-box run -c /tmp/sb.json > /tmp/singbox.log 2>&1 &
+          sleep 5
+          if curl -s --socks5-hostname 127.0.0.1:1080 --connect-timeout 10 https://httpbin.org/ip; then
+            echo "Proxy OK"
+          else
+            echo "Proxy check failed, but continuing..."
+            cat /tmp/singbox.log
+          fi
         env:
           VLINK: ${{ secrets.VLINK }}
 
