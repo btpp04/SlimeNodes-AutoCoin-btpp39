@@ -8,7 +8,7 @@ BASE = "https://dash.slimenodes.com"
 CID = "1267847469501513799"
 SCO = "identify email guilds.join"
 CPC = 12  # coins per claim
-WAIT = 16  # min seconds between gen and redeem
+WAIT = 20  # min seconds between gen and redeem
 MAX = int(os.environ.get("MAX_ADS", "20"))
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
 TGT = os.environ.get("TG_BOT_TOKEN", "")
@@ -171,8 +171,23 @@ def process(tok, lab="acct"):
             time.sleep(10)
         elif r == "SESSION_EXPIRED": er(f"[{lab}] Session过期"); break
         elif r == "DAILY_LIMIT": daily = True; break
-        else: er(f"[{lab}] {r}")
-        time.sleep(random.randint(3, 6))
+        else:
+            er(f"[{lab}] {r}")
+            if "UNK" in r and i < MAX - 1:
+                log(f"[{lab}] retry redeem (wait 30s)...")
+                time.sleep(30)
+                r2 = red(s, ru)
+                if r2 == "OK":
+                    earned += CPC; bypass = 0
+                    ok(f"[{lab}] +{CPC} retry OK (total +{earned})")
+                    continue
+                elif r2 == "SESSION_EXPIRED":
+                    er(f"[{lab}] Session expired"); break
+                elif r2 == "DAILY_LIMIT":
+                    daily = True; break
+                else:
+                    er(f"[{lab}] retry also failed: {r2}")
+            time.sleep(random.randint(3, 6))
 
     b1 = bal(s)
     if b1 is not None:
