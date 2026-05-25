@@ -15,12 +15,12 @@ jobs:
       - name: Setup sing-box proxy
         run: |
           curl -fsSL https://github.com/SagerNet/sing-box/releases/download/v1.11.0/sing-box-1.11.0-linux-amd64.tar.gz | tar xz
-          mv sing-box-1.11.0-linux-amd64/sing-box /usr/local/bin/
-          chmod +x /usr/local/bin/sing-box
-          echo "$VLINK" | python3 link_to_sb.py > /tmp/sb.json
+          sudo mv sing-box-1.11.0-linux-amd64/sing-box /usr/local/bin/
+          sudo chmod +x /usr/local/bin/sing-box
+          python3 link_to_sb.py <<< "$VLINK" > /tmp/sb.json
           sing-box run -c /tmp/sb.json &
           sleep 3
-          echo "SOCKS_PROXY=socks5h://127.0.0.1:1080" >> $GITHUB_ENV
+          curl -s --socks5 127.0.0.1:1080 https://httpbin.org/ip && echo "Proxy OK" || echo "Proxy failed"
         env:
           VLINK: ${{ secrets.VLINK }}
 
