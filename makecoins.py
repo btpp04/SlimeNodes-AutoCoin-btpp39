@@ -170,17 +170,14 @@ def get_renew_info(s):
 
 
 def renew_server(s):
-    """Renew server - click renew on dashboard page"""
+    """Renew server with Discord token (limited)"""
     if not SID: return False
-    # Try direct renew URL
     body = run_curl(["-L", "-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
                      f"{BASE}/renew?id={SID}"], timeout=20)
     if "success" in body.lower() or "renewed" in body.lower():
         return True
-    # Check if redirected to dashboard (success)
     if "/dashboard" in body[:500].lower():
         return True
-    log(f"[renew] Renew failed - needs manual renew")
     return False
 
 def process(tok, lab="acct"):
@@ -251,10 +248,47 @@ def main():
 
     total = 0; res = []
     for a in accts:
-        t = a.get("token",""); l = a.get("label", a.get("email", f"acct{len(res)+1}"))
-        if not t: er(f"[{l}] 无token"); continue
-        c, d, b1 = process(t, l); total += c
-        res.append({"l": l, "c": c, "d": d, "b": b1})
+        l = a.get("label", a.get("email", f"acct{len(res)+1}"))
+        t = a.get("token","")
+        sess = a.get("session","")
+        
+        if sess:
+            # Session cookie mode - can access dashboard
+            log(f"\n=== [{l}] 刷币 (Session模式) ===")
+            c, d, b1 = process_session(sess, l); total += c
+            res.append({"l": l, "c": c, "d": d, "b": b1})
+            
+            # Auto-renew check with session
+            if SID:
+                hours_left = get_renew_info_session(sess)
+                if hours_left is not None:
+                    res[-1]["hours"] = hours_left
+                    log(f"[{l}] 服务器剩余: {hours_left}小时")
+                    if hours_left < RENEW_HOURS:
+                        log(f"[{l}] 续期中...")
+                        if renew_server_session(sess):
+                            log(f"[{l}] ✅ 服务器已续期")
+                            res[-1]["r"] = True
+                        else:
+                            log(f"[{l}] ⚠️ 续期失败")
+                            res[-1]["r"] = False
+                    else:
+                        log(f"[{l}] 暂不续期 (>{RENEW_HOURS}h)")
+                        res[-1]["r"] = None
+                else:
+                    log(f"[{l}] 无法获取到期时间")
+                    res[-1]["r"] = None
+        elif t:
+            # Discord token mode - cannot access dashboard
+            log(f"\n=== [{l}] 刷币 (OAuth模式) ===")
+            c, d, b1 = process(t, l); total += c
+            res.append({"l": l, "c": c, "d": d, "b": b1})
+            if SID:
+                log(f"[{l}] 💡 续期请手动: https://dash.slimenodes.com/servers")
+                res[-1]["hours"] = None
+                res[-1]["r"] = None
+        else:
+            er(f"[{l}] 无token/session"); continue
         
         # Renew reminder - OAuth session cannot access dashboard for renewal
         if SID:
