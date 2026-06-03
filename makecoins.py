@@ -171,8 +171,7 @@ def browser_renew(tok):
         
         log("[browser] Starting browser renew...")
         # Use headless mode with virtual display
-        with SB(uc=True, locale="en", test=True, headless=True, 
-                xvfb=True, anti_bot=True) as sb:
+        with SB(uc=True, locale="en", test=True, headless=True, xvfb=True) as sb:
             # Open SlimeNodes
             sb.uc_open_with_reconnect(f"{BASE}", reconnect_time=5.0)
             _time.sleep(2)
