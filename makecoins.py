@@ -160,20 +160,24 @@ def process(session_id, label="acct"):
 
     # Auto-renew
     renewed = False
+    hours_left = None
     if SERVER_ID and b1 is not None and b1 >= RENEW_THRESHOLD:
         cd_body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(session_id)}",
                             f"{BASE}/lastrenew?id={SERVER_ID}"])
-        hours_left = None
         try:
             last_renew_ms = json.loads(cd_body).get("lastrenew", 0)
             now_ms = time.time() * 1000
             hours_left = (last_renew_ms - now_ms) / (1000 * 60 * 60)
-            log(f"服务器剩余: {hours_left:.0f}小时")
+            if last_renew_ms == 0:
+                log(f"/lastrenew返回0 (Server ID格式可能不对)")
+                hours_left = None
+            else:
+                log(f"服务器剩余: {hours_left:.0f}小时")
         except:
             log("无法获取到期时间")
         if hours_left is not None and hours_left > RENEW_HOURS:
             log(f"暂不续期 (>{RENEW_HOURS}h)")
-        else:
+        elif hours_left is not None:
             renewed = renew(session_id, SERVER_ID)
             if renewed:
                 b2 = bal(session_id)
