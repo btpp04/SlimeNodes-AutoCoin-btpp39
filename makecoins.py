@@ -147,18 +147,23 @@ def bal(s):
     return int(m.group(1)) if m else None
 
 def get_renew_info(s):
-    """Get last renew time and calculate hours until expiry"""
-    if not SID: return None, None
-    body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
-                     f"{BASE}/lastrenew?id={SID}"])
+    """Get server expiration from dashboard page. Returns hours_left or None"""
+    if not SID: return None
+    import re
     try:
-        data = json.loads(body)
-        last_ms = data.get("lastrenew", 0)
-        now_ms = time.time() * 1000
-        hours_left = (last_ms - now_ms) / (1000 * 60 * 60)
-        return last_ms, hours_left
+        body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
+                         f"{BASE}/servers"], timeout=15)
+        # Parse "Server expires in X hours"
+        m = re.search(r'expires? in (\d+) hours?', body, re.IGNORECASE)
+        if m:
+            return int(m.group(1))
+        # Try "expires in X days"
+        m = re.search(r'expires? in (\d+) days?', body, re.IGNORECASE)
+        if m:
+            return int(m.group(1)) * 24
+        return None
     except:
-        return None, None
+        return None
 
 
 
