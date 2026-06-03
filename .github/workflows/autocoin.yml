@@ -30,6 +30,9 @@ jobs:
         env:
           VLINK: ${{ secrets.VLINK }}
 
+      - name: Install SeleniumBase
+        run: pip install seleniumbase
+
       - name: Run AutoCoin
         run: python3 makecoins.py
         env:
