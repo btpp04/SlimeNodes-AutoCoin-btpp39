@@ -1,5 +1,4 @@
 name: SlimeNodes AutoCoin
-
 on:
   schedule:
     - cron: '30 0 * * *'
@@ -11,7 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup sing-box proxy
         run: |
           curl -fsSL https://github.com/SagerNet/sing-box/releases/download/v1.11.0/sing-box-1.11.0-linux-amd64.tar.gz | tar xz
@@ -21,20 +19,18 @@ jobs:
           cat /tmp/sb.json | head -5
           nohup sing-box run -c /tmp/sb.json > /tmp/singbox.log 2>&1 &
           sleep 5
-          if curl -s --socks5-hostname 127.0.0.1:1080 --connect-timeout 10 https://httpbin.org/ip; then
-            echo "Proxy OK"
-          else
-            echo "Proxy check failed, but continuing..."
-            cat /tmp/singbox.log
+          if curl -s --socks5-hostname 127.0.0.1:1080 --connect-timeout 10 https://httpbin.org/ip; then echo "Proxy OK"
+          else echo "Proxy check failed, but continuing..."; cat /tmp/singbox.log
           fi
         env:
           VLINK: ${{ secrets.VLINK }}
-
       - name: Run AutoCoin
         run: python3 makecoins.py
         env:
-          SLIME_ACCOUNTS: ${{ secrets.SLIME_ACCOUNTS }}
+          SLIME_SESSION: ${{ secrets.SLIME_SESSION }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           SOCKS_PROXY: socks5h://127.0.0.1:1080
           SERVER_ID: ${{ secrets.SERVER_ID }}
+          RENEW_HOURS: "24"
+          RENEW_THRESHOLD: "50"
