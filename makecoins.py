@@ -288,24 +288,62 @@ def process_session(session, l):
 
 def gen_session(s):
     """Generate linkvertise URL with session cookie"""
-    body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
-                     f"{BASE}/lv/gen"], timeout=25)
-    return parse_linkvertise(body, s)
+    hdr = "/tmp/sng.txt"
+    cmd = ["curl", "-s", "-D", hdr, "--connect-timeout", "20", "--max-time", "20"] + px()
+    cmd += ["-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
+            "-H", f"Referer: {BASE}/lv", f"{BASE}/lv/gen"]
+    try:
+        body = subprocess.run(cmd, capture_output=True, text=True, timeout=25).stdout
+        loc = ""
+        with open(hdr) as f:
+            for line in f:
+                if line.lower().startswith("location:"):
+                    loc = line.split(":",1)[1].strip(); break
+        if not loc:
+            m = re.search(r'href="(https://link-to\.net/[^"]+)"', body)
+            if m: loc = m.group(1)
+        if not loc:
+            if "daily" in body.lower() and "limit" in body.lower(): return "DAILY_LIMIT"
+            if "/login" in (loc or body): return "SESSION_EXPIRED"
+            er(f"Gen fail: {body[:120]}"); return None
+        rm = re.search(r'[?&]r=([^&\s]+)', loc)
+        if not rm: er(f"No r: {loc[:60]}"); return None
+        rp = unquote(rm.group(1)).replace("-","+").replace("_","/")
+        rp += "=" * ((4-len(rp)%4)%4)
+        try: return base64.b64decode(rp).decode()
+        except: er("b64 fail"); return None
+    except Exception as e:
+        er(f"Gen err: {e}"); return None
 
 
 def red_session(s, ru):
     """Redeem with session cookie"""
+    hdr = "/tmp/snr.txt"
     data = json.dumps({"r": ru}).encode()
-    body = run_curl(["-X", "POST", "-H", "Content-Type: application/json",
-                     "-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
-                     "-H", "Referer: https://linkvertise.com/",
-                     f"{BASE}/lv/redeem"], data=data, timeout=15)
-    return check_redeem(body)
+    cmd = ["curl", "-s", "-D", hdr, "--connect-timeout", "20", "--max-time", "20"] + px()
+    cmd += ["-X", "POST", "-H", "Content-Type: application/json",
+            "-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
+            "-H", "Referer: https://linkvertise.com/",
+            f"{BASE}/lv/redeem"]
+    try:
+        subprocess.run(cmd, input=data, capture_output=True, text=True, timeout=25)
+        loc = ""
+        with open(hdr) as f:
+            for line in f:
+                if line.lower().startswith("location:"):
+                    loc = line.split(":",1)[1].strip(); break
+        if "success=true" in loc: return "OK"
+        if "LVBYPASSERROR" in loc: return "BYPASS"
+        if "/login" in loc: return "SESSION_EXPIRED"
+        if "daily" in loc.lower(): return "DAILY_LIMIT"
+        return f"UNK:{loc[:40]}"
+    except Exception as e:
+        er(f"Red err: {e}"); return "ERROR"
 
 
 def cooldown_session(s):
     """Check cooldown with session cookie"""
-    body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
+    body = run_curl(["-L", "-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
                      f"{BASE}/lv/cooldown"], timeout=10)
     try: return json.loads(body)
     except: return {}
@@ -313,12 +351,13 @@ def cooldown_session(s):
 
 def get_bal_session(s, l):
     """Get balance with session cookie"""
-    body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
-                     f"{BASE}/user"], timeout=10)
+    body = run_curl(["-L", "-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
+                     f"{BASE}/dashboard"], timeout=10)
     try:
-        data = json.loads(body)
-        b = data.get("balance")
-        if b is not None: return int(b)
+        # Try to parse balance from dashboard HTML
+        import re
+        m = re.search(r'(\d+)\s*coins?', body, re.IGNORECASE)
+        if m: return int(m.group(1))
     except: pass
     return 0
 
