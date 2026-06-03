@@ -198,14 +198,19 @@ def main():
     dl = " (上限)" if d else ""
     bl = f" | 余额{b1}" if b1 is not None else ""
     lines.append(f"{s} {label}: +{c}币{dl}{bl}")
-    if hours_left is not None:
-        lines.append(f"⏰ 剩余: {hours_left:.0f}小时")
+    if hours_left is not None and hours_left > 0:
+        days = hours_left / 24
+        lines.append(f"⏰ 剩余: {hours_left:.0f}小时 ({days:.1f}天)")
+    elif hours_left is not None:
+        lines.append(f"⏰ 到期时间获取异常 (Server ID可能不对)")
     if renewed:
         lines.append("🔄 续期: ✅ 已续期")
     elif hours_left is not None and hours_left > RENEW_HOURS:
         lines.append(f"🔄 续期: ⏭️ 暂不需要 (>{RENEW_HOURS}h)")
-    elif hours_left is not None:
+    elif hours_left is not None and hours_left > 0:
         lines.append("🔄 续期: ❌ 失败")
+    elif not SERVER_ID:
+        lines.append("🔄 续期: 未配置SERVER_ID")
     lines.append(f"\n💰 总计: +{c}币")
     send_tg("\n".join(lines))
     log("完成!")
