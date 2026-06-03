@@ -167,9 +167,12 @@ def browser_renew(tok):
         from seleniumbase import SB
         import time as _time
         import re as _re
+        import os
         
         log("[browser] Starting browser renew...")
-        with SB(uc=True, locale="en", test=True) as sb:
+        # Use headless mode with virtual display
+        with SB(uc=True, locale="en", test=True, headless=True, 
+                xvfb=True, anti_bot=True) as sb:
             # Open SlimeNodes
             sb.uc_open_with_reconnect(f"{BASE}", reconnect_time=5.0)
             _time.sleep(2)
@@ -265,6 +268,8 @@ def browser_renew(tok):
         return False
     except Exception as e:
         log(f"[browser] Browser renew error: {e}")
+        import traceback
+        log(f"[browser] {traceback.format_exc()}")
         return False
 
 def renew_server(s):
