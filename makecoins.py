@@ -260,6 +260,7 @@ def main():
         if SID and b1 is not None and b1 >= RENEW_THRESHOLD:
             hours_left = get_renew_info(t)
             if hours_left is not None:
+                res[-1]["hours"] = hours_left
                 log(f"[{l}] 服务器剩余: {hours_left}小时")
                 if hours_left < RENEW_HOURS:
                     log(f"[{l}] 续期中...")
