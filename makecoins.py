@@ -163,31 +163,17 @@ def get_renew_info(s):
 
 
 def renew_server(s):
-    """Renew server using current session"""
+    """Renew server - click renew on dashboard page"""
     if not SID: return False
-    hdr = "/tmp/snrh.txt"
-    cmd = ["curl", "-s", "-D", hdr, "--connect-timeout", "20", "--max-time", "25"] + px()
-    cmd += ["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
-            "-H", f"Referer: {BASE}/dashboard",
-            f"{BASE}/renew?id={SID}"]
-    try:
-        subprocess.run(cmd, timeout=30, capture_output=True)
-        loc = ""
-        with open(hdr) as f:
-            for line in f:
-                if line.lower().startswith("location:"):
-                    loc = line.split(":",1)[1].strip(); break
-        log(f"[renew] Location: {loc}")
-        if "success=RENEWED" in loc or "RENEWED" in loc.upper():
-            return True
-        if "/dashboard" in loc and "login" not in loc:
-            log(f"[renew] Redirected to dashboard (likely success)")
-            return True
-        if "/login" in loc:
-            log(f"[renew] OAuth session cannot renew (needs full login)")
-            return False
-    except Exception as e:
-        log(f"[renew] Error: {e}")
+    # Try direct renew URL
+    body = run_curl(["-L", "-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
+                     f"{BASE}/renew?id={SID}"], timeout=20)
+    if "success" in body.lower() or "renewed" in body.lower():
+        return True
+    # Check if redirected to dashboard (success)
+    if "/dashboard" in body[:500].lower():
+        return True
+    log(f"[renew] Renew failed - needs manual renew")
     return False
 
 def process(tok, lab="acct"):
@@ -265,19 +251,19 @@ def main():
         
         # Auto-renew check
         if SID and b1 is not None and b1 >= RENEW_THRESHOLD:
-            last_ms, hours_left = get_renew_info(t)
+            hours_left = get_renew_info(t)
             if hours_left is not None:
-                log(f"[{l}] 服务器剩余: {hours_left:.0f}小时")
+                log(f"[{l}] 服务器剩余: {hours_left}小时")
                 if hours_left < RENEW_HOURS:
                     log(f"[{l}] 续期中...")
                     if renew_server(t):
                         log(f"[{l}] ✅ 服务器已续期")
                         res[-1]["r"] = True
                     else:
-                        log(f"[{l}] ⚠️ 续期需手动(OAuth限制)")
+                        log(f"[{l}] ⚠️ 续期失败, 请手动续期")
                         res[-1]["r"] = False
                 else:
-                    log(f"[{l}] 离到期还有{hours_left:.0f}小时，暂不续期 (>{RENEW_HOURS}h)")
+                    log(f"[{l}] 离到期还有{hours_left}小时，暂不续期")
                     res[-1]["r"] = None
             else:
                 log(f"[{l}] 无法获取到期时间")
