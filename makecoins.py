@@ -163,7 +163,13 @@ def get_renew_info(s):
 def renew_server(s):
     """Renew server, return True if success"""
     if not SID: return False
-    # Add Referer and X-Requested-With for AJAX-like request
+    # Visit dashboard first to activate session
+    log(f"[renew] Activating session via dashboard...")
+    run_curl(["-L", "-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
+              f"{BASE}/dashboard"], timeout=20)
+    time.sleep(1)
+    
+    # Now try renew with proper headers
     hdr = "/tmp/snrh.txt"
     cmd = ["curl", "-s", "-D", hdr, "--connect-timeout", "20", "--max-time", "25"] + px()
     cmd += ["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
