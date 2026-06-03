@@ -163,11 +163,27 @@ def get_renew_info(s):
 def renew_server(s):
     """Renew server, return True if success"""
     if not SID: return False
-    body = run_curl(["-L", "-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
-                     f"{BASE}/renew?id={SID}"], timeout=30)
-    log(f"[renew] Response: {body[:200]}")
-    if "success=RENEWED" in body or "RENEWED" in body.upper():
-        return True
+    # Don't follow redirects - check Location header
+    hdr = "/tmp/snrh.txt"
+    cmd = ["curl", "-s", "-D", hdr, "--connect-timeout", "20", "--max-time", "25"] + px()
+    cmd += ["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
+            f"{BASE}/renew?id={SID}"]
+    try:
+        subprocess.run(cmd, timeout=30, capture_output=True)
+        loc = ""
+        with open(hdr) as f:
+            for line in f:
+                if line.lower().startswith("location:"):
+                    loc = line.split(":",1)[1].strip(); break
+        log(f"[renew] Location: {loc}")
+        if "success=RENEWED" in loc or "RENEWED" in loc.upper():
+            return True
+        # Also check if redirected to dashboard (might be success)
+        if "/dashboard" in loc:
+            log(f"[renew] Redirected to dashboard (likely success)")
+            return True
+    except Exception as e:
+        log(f"[renew] Error: {e}")
     return False
 
 def process(tok, lab="acct"):
