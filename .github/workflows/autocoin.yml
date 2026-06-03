@@ -31,7 +31,9 @@ jobs:
           VLINK: ${{ secrets.VLINK }}
 
       - name: Install SeleniumBase
-        run: pip install seleniumbase
+        run: |
+          sudo apt-get update && sudo apt-get install -y xvfb
+          pip install seleniumbase
 
       - name: Run AutoCoin
         run: python3 makecoins.py
