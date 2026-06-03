@@ -160,6 +160,113 @@ def get_renew_info(s):
     except:
         return None, None
 
+
+def browser_renew(tok):
+    """Use SeleniumBase to click renew button on dashboard"""
+    try:
+        from seleniumbase import SB
+        import time as _time
+        import re as _re
+        
+        log("[browser] Starting browser renew...")
+        with SB(uc=True, locale="en", test=True) as sb:
+            # Open SlimeNodes
+            sb.uc_open_with_reconnect(f"{BASE}", reconnect_time=5.0)
+            _time.sleep(2)
+            
+            # Click Discord OAuth button
+            try:
+                sb.uc_gui_click_captcha()
+                _time.sleep(1)
+            except: pass
+            
+            # Find Discord login link
+            discord_link = sb.find_element("css:a[href*='discord.com/api/oauth2/authorize']")
+            href = discord_link.get_attribute("href")
+            
+            # Get Discord OAuth code via API
+            headers = {"Authorization": f"Bot {tok}", "Content-Type": "application/json"}
+            
+            # Step 1: Get Discord user
+            req = urllib.request.Request("https://discord.com/api/v10/users/@me",
+                headers={"Authorization": f"Bot {tok}"})
+            resp = json.loads(urllib.request.urlopen(req, timeout=10).read())
+            uid = resp["id"]
+            uname = resp.get("username", "")
+            log(f"[browser] Discord: {uname} ({uid})")
+            
+            # Step 2: Get auth URL from page source
+            sb.uc_open_with_reconnect(href, reconnect_time=5.0)
+            _time.sleep(2)
+            src = sb.get_page_source()
+            
+            # Extract authorize URL
+            m = _re.search(r'"(https://discord\.com/oauth2/authorize\?[^"]+)"', src)
+            if not m:
+                log("[browser] Cannot find authorize URL")
+                return False
+            
+            auth_url = m.group(1).replace("\u0026", "&")
+            log(f"[browser] Authorizing via browser...")
+            
+            # Open authorize URL
+            sb.uc_open_with_reconnect(auth_url, reconnect_time=5.0)
+            _time.sleep(3)
+            
+            # Click authorize button
+            try:
+                sb.uc_gui_click_captcha()
+                _time.sleep(1)
+            except: pass
+            
+            # Find and click authorize button
+            auth_btn = sb.find_element("css:button[type='submit'], button:not([disabled])", timeout=5)
+            if auth_btn:
+                auth_btn.click()
+                _time.sleep(5)
+            
+            # Check if we're on the dashboard
+            current_url = sb.get_current_url()
+            log(f"[browser] Current URL: {current_url}")
+            
+            if "/dashboard" in current_url or BASE in current_url:
+                # Navigate to server page
+                sb.uc_open_with_reconnect(f"{BASE}/server/{SID}", reconnect_time=5.0)
+                _time.sleep(3)
+                
+                # Find and click renew button
+                try:
+                    renew_btn = sb.find_element("css:a[href*='renew'], button:contains('Renew'), button:contains('renew')", timeout=5)
+                    if renew_btn:
+                        renew_btn.click()
+                        _time.sleep(3)
+                        
+                        # Check for success
+                        src = sb.get_page_source()
+                        if "success" in src.lower() or "renewed" in src.lower() or "dashboard" in sb.get_current_url():
+                            log("[browser] ✅ Renew clicked successfully")
+                            return True
+                        else:
+                            log("[browser] Renew button clicked but unclear result")
+                            return True
+                except Exception as e:
+                    log(f"[browser] Renew button not found: {e}")
+                    
+                # Alternative: try direct renew URL
+                log("[browser] Trying direct renew URL...")
+                sb.uc_open_with_reconnect(f"{BASE}/renew?id={SID}", reconnect_time=5.0)
+                _time.sleep(3)
+                current_url = sb.get_current_url()
+                if "success" in current_url.lower() or "dashboard" in current_url:
+                    log("[browser] ✅ Direct renew URL worked")
+                    return True
+                    
+        log("[browser] Browser renew failed")
+        return False
+    except Exception as e:
+        log(f"[browser] Browser renew error: {e}")
+        return False
+
 def renew_server(s):
     """Renew server using current session"""
     if not SID: return False
@@ -182,8 +289,8 @@ def renew_server(s):
             log(f"[renew] Redirected to dashboard (likely success)")
             return True
         if "/login" in loc:
-            log(f"[renew] OAuth session limited, needs manual renew")
-            return False
+            log(f"[renew] Session-based renew failed, trying browser...")
+            return browser_renew(s)
     except Exception as e:
         log(f"[renew] Error: {e}")
     return False
@@ -272,7 +379,7 @@ def main():
                         log(f"[{l}] ✅ 服务器已续期")
                         res[-1]["r"] = True
                     else:
-                        log(f"[{l}] ⚠️ 续期失败, 需手动续期")
+                        log(f"[{l}] ❌ 续期失败")
                         res[-1]["r"] = False
                 else:
                     log(f"[{l}] 离到期还有{hours_left:.0f}小时，暂不续期 (>{RENEW_HOURS}h)")
