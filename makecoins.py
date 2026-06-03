@@ -14,6 +14,9 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 TGT = os.environ.get("TG_BOT_TOKEN", "")
 TGC = os.environ.get("TG_CHAT_ID", "")
 PX = os.environ.get("SOCKS_PROXY", os.environ.get("HTTP_PROXY", ""))
+SID = os.environ.get("SERVER_ID", "")
+RENEW_HOURS = int(os.environ.get("RENEW_HOURS", "24"))
+RENEW_THRESHOLD = int(os.environ.get("RENEW_THRESHOLD", "50"))
 
 def px(): return ["-x", PX] if PX else []
 def log(m): print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] {m}", flush=True)
@@ -143,6 +146,29 @@ def bal(s):
     m = re.search(r'balance\.textContent\s*=\s*Math\.floor\((\d+)\s*\*\s*100\)', body)
     return int(m.group(1)) if m else None
 
+def get_renew_info(s):
+    """Get last renew time and calculate hours until expiry"""
+    if not SID: return None, None
+    body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
+                     f"{BASE}/lastrenew?id={SID}"])
+    try:
+        data = json.loads(body)
+        last_ms = data.get("lastrenew", 0)
+        now_ms = time.time() * 1000
+        hours_left = (last_ms - now_ms) / (1000 * 60 * 60)
+        return last_ms, hours_left
+    except:
+        return None, None
+
+def renew_server(s):
+    """Renew server, return True if success"""
+    if not SID: return False
+    body = run_curl(["-L", "-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
+                     f"{BASE}/renew?id={SID}"], timeout=30)
+    if "success=RENEWED" in body or "RENEWED" in body.upper():
+        return True
+    return False
+
 def process(tok, lab="acct"):
     log(f"\n{'='*40}\n账号: {lab}\n{'='*40}")
     s = discord_oauth(tok)
@@ -215,6 +241,29 @@ def main():
         if not t: er(f"[{l}] 无token"); continue
         c, d, b1 = process(t, l); total += c
         res.append({"l": l, "c": c, "d": d, "b": b1})
+        
+        # Auto-renew check
+        if SID and b1 is not None and b1 >= RENEW_THRESHOLD:
+            last_ms, hours_left = get_renew_info(t)
+            if hours_left is not None:
+                log(f"[{l}] 服务器剩余: {hours_left:.0f}小时")
+                if hours_left < RENEW_HOURS:
+                    log(f"[{l}] 续期中...")
+                    if renew_server(t):
+                        log(f"[{l}] ✅ 服务器已续期")
+                        res[-1]["r"] = True
+                    else:
+                        log(f"[{l}] ❌ 续期失败")
+                        res[-1]["r"] = False
+                else:
+                    log(f"[{l}] 离到期还有{hours_left:.0f}小时，暂不续期 (>{RENEW_HOURS}h)")
+                    res[-1]["r"] = None
+            else:
+                log(f"[{l}] 无法获取到期时间")
+                res[-1]["r"] = None
+        elif SID and b1 is not None and b1 < RENEW_THRESHOLD:
+            log(f"[{l}] 余额不足续期 (需{RENEW_THRESHOLD}币)")
+            res[-1]["r"] = None
 
     log(f"\n总计: +{total}币")
     dt = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -222,7 +271,10 @@ def main():
     for r in res:
         s = "✅" if r["c"]>0 else "❌"; dl = " (上限)" if r["d"] else ""
         bl = f" | 余额{r['b']}" if r.get("b") is not None else ""
-        lines.append(f"{s} {r['l']}: +{r['c']}币{dl}{bl}")
+        renew = ""
+        if r.get("r") is True: renew = " | 🔄已续期"
+        elif r.get("r") is False: renew = " | ❌续期失败"
+        lines.append(f"{s} {r['l']}: +{r['c']}币{dl}{bl}{renew}")
     lines.append(f"\n💰 总计: +{total}币")
     send_tg("\n".join(lines))
     log("完成!")
