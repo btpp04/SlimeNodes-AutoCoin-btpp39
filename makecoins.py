@@ -319,14 +319,14 @@ def gen_session(s):
 def red_session(s, ru):
     """Redeem with session cookie"""
     hdr = "/tmp/snr.txt"
-    data = json.dumps({"r": ru}).encode()
+    data_str = json.dumps({"r": ru})
     cmd = ["curl", "-s", "-D", hdr, "--connect-timeout", "20", "--max-time", "20"] + px()
     cmd += ["-X", "POST", "-H", "Content-Type: application/json",
             "-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
             "-H", "Referer: https://linkvertise.com/",
             f"{BASE}/lv/redeem"]
     try:
-        subprocess.run(cmd, input=data, capture_output=True, text=True, timeout=25)
+        subprocess.run(cmd, input=data_str, capture_output=True, text=True, timeout=25)
         loc = ""
         with open(hdr) as f:
             for line in f:
