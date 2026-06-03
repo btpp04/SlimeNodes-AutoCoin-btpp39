@@ -147,23 +147,25 @@ def bal(s):
     return int(m.group(1)) if m else None
 
 def get_renew_info(s):
-    """Get server expiration from dashboard page. Returns hours_left or None"""
+    """Get server expiration from dashboard. Returns hours_left or None"""
     if not SID: return None
     import re
-    try:
-        body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
-                         f"{BASE}/servers"], timeout=15)
-        # Parse "Server expires in X hours"
-        m = re.search(r'expires? in (\d+) hours?', body, re.IGNORECASE)
-        if m:
-            return int(m.group(1))
-        # Try "expires in X days"
-        m = re.search(r'expires? in (\d+) days?', body, re.IGNORECASE)
-        if m:
-            return int(m.group(1)) * 24
-        return None
-    except:
-        return None
+    # Try multiple endpoints
+    for url in [f"{BASE}/servers", f"{BASE}/server/{SID}", f"{BASE}/"]:
+        try:
+            body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}", url], timeout=15)
+            if "/login" in body[:200]:
+                continue  # Not authenticated
+            # Parse "expires in X hours"
+            m = re.search(r'expires? in (\d+) hours?', body, re.IGNORECASE)
+            if m:
+                return int(m.group(1))
+            m = re.search(r'expires? in (\d+) days?', body, re.IGNORECASE)
+            if m:
+                return int(m.group(1)) * 24
+        except:
+            continue
+    return None
 
 
 
