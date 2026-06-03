@@ -233,6 +233,122 @@ def process(tok, lab="acct"):
         return actual, daily, b1
     return earned, daily, None
 
+def process_session(session, l):
+    """Process with session cookie (can access dashboard)"""
+    log(f"\n{'='*40}\n账号: {l} (Session)\n{'='*40}")
+    b0 = get_bal_session(session, l)
+    log(f"[{l}] 余额: {b0}币")
+    
+    earned = 0; bypass = 0; daily = False
+    for i in range(MAX):
+        cd = cooldown_session(session)
+        if cd.get("dailyLimit"): log(f"[{l}] 每日上限"); daily = True; break
+        ru = gen_session(session)
+        if ru == "DAILY_LIMIT": daily = True; break
+        if ru == "SESSION_EXPIRED": er(f"[{l}] Session过期"); break
+        if not ru: er(f"[{l}] gen失败"); break
+        w = WAIT + random.randint(1, 4)
+        log(f"[{l}] 广告{i+1}/{MAX}: 等{w}s...")
+        time.sleep(w)
+        r = red_session(session, ru)
+        if r == "OK":
+            earned += CPC; bypass = 0
+            ok(f"[{l}] +{CPC}币 (累计+{earned})")
+        elif r == "BYPASS":
+            bypass += 1; er(f"[{l}] BYPASS")
+            if bypass >= 3: break
+            time.sleep(10)
+        elif r == "SESSION_EXPIRED": er(f"[{l}] Session过期"); break
+        elif r == "DAILY_LIMIT": daily = True; break
+        else:
+            er(f"[{l}] {r}")
+            if "UNK" in r and i < MAX - 1:
+                log(f"[{l}] retry redeem (wait 30s)...")
+                time.sleep(30)
+                r2 = red_session(session, ru)
+                if r2 == "OK":
+                    earned += CPC; bypass = 0
+                    ok(f"[{l}] +{CPC} retry OK (total +{earned})")
+                    continue
+                elif r2 == "SESSION_EXPIRED":
+                    er(f"[{l}] Session expired"); break
+                elif r2 == "DAILY_LIMIT":
+                    daily = True; break
+                else:
+                    er(f"[{l}] retry also failed: {r2}")
+            time.sleep(random.randint(3, 6))
+    
+    b1 = get_bal_session(session, l)
+    if b1 is not None:
+        actual = max(b1 - b0, 0) if b0 is not None else earned
+        log(f"[{l}] 最终: {b1}币 (本次实际+{actual})")
+        return actual, daily, b1
+    return earned, daily, None
+
+
+def gen_session(s):
+    """Generate linkvertise URL with session cookie"""
+    body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
+                     f"{BASE}/lv/gen"], timeout=25)
+    return parse_linkvertise(body, s)
+
+
+def red_session(s, ru):
+    """Redeem with session cookie"""
+    data = json.dumps({"r": ru}).encode()
+    body = run_curl(["-X", "POST", "-H", "Content-Type: application/json",
+                     "-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
+                     "-H", "Referer: https://linkvertise.com/",
+                     f"{BASE}/lv/redeem"], data=data, timeout=15)
+    return check_redeem(body)
+
+
+def cooldown_session(s):
+    """Check cooldown with session cookie"""
+    body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
+                     f"{BASE}/lv/cooldown"], timeout=10)
+    try: return json.loads(body)
+    except: return {}
+
+
+def get_bal_session(s, l):
+    """Get balance with session cookie"""
+    body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
+                     f"{BASE}/user"], timeout=10)
+    try:
+        data = json.loads(body)
+        b = data.get("balance")
+        if b is not None: return int(b)
+    except: pass
+    return 0
+
+
+def get_renew_info_session(s):
+    """Get expiration with session cookie"""
+    import re
+    for url in [f"{BASE}/servers", f"https://dash.slimenodes.com/servers"]:
+        try:
+            body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}", url], timeout=15)
+            if "/login" in body[:200]: continue
+            m = re.search(r'expires? in (\d+) hours?', body, re.IGNORECASE)
+            if m: return int(m.group(1))
+            m = re.search(r'expires? in (\d+) days?', body, re.IGNORECASE)
+            if m: return int(m.group(1)) * 24
+        except: continue
+    return None
+
+
+def renew_server_session(s):
+    """Renew server with session cookie"""
+    body = run_curl(["-L", "-H", f"User-Agent: {UA}", "-H", f"Cookie: connect.sid={s}",
+                     f"{BASE}/renew?id={SID}"], timeout=20)
+    if "success" in body.lower() or "renewed" in body.lower():
+        return True
+    if "/dashboard" in body[:500].lower():
+        return True
+    return False
+
+
 def main():
     raw = os.environ.get("SLIME_ACCOUNTS", "").strip()
     if not raw: er("SLIME_ACCOUNTS未设置!"); sys.exit(1)
