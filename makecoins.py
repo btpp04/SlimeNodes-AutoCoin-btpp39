@@ -256,29 +256,9 @@ def main():
         c, d, b1 = process(t, l); total += c
         res.append({"l": l, "c": c, "d": d, "b": b1})
         
-        # Auto-renew check
-        if SID and b1 is not None and b1 >= RENEW_THRESHOLD:
-            hours_left = get_renew_info(t)
-            if hours_left is not None:
-                res[-1]["hours"] = hours_left
-                log(f"[{l}] 服务器剩余: {hours_left}小时")
-                if hours_left < RENEW_HOURS:
-                    log(f"[{l}] 续期中...")
-                    if renew_server(t):
-                        log(f"[{l}] ✅ 服务器已续期")
-                        res[-1]["r"] = True
-                    else:
-                        log(f"[{l}] ⚠️ 续期失败, 请手动续期")
-                        res[-1]["r"] = False
-                else:
-                    log(f"[{l}] 离到期还有{hours_left}小时，暂不续期")
-                    res[-1]["r"] = None
-            else:
-                log(f"[{l}] 无法获取到期时间")
-                res[-1]["r"] = None
-        elif SID and b1 is not None and b1 < RENEW_THRESHOLD:
-            log(f"[{l}] 余额不足续期 (需{RENEW_THRESHOLD}币)")
-            res[-1]["r"] = None
+        # Renew reminder - OAuth session cannot access dashboard for renewal
+        if SID:
+            log(f"[{l}] 💡 续期请手动: https://dash.slimenodes.com/servers")
 
     log(f"\n总计: +{total}币")
     dt = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
