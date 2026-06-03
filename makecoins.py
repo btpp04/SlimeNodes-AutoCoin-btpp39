@@ -286,10 +286,11 @@ def main():
     for r in res:
         s = "✅" if r["c"]>0 else "❌"; dl = " (上限)" if r["d"] else ""
         bl = f" | 余额{r['b']}" if r.get("b") is not None else ""
+        hl = f" | ⏰{r['hours']}h" if r.get("hours") is not None else ""
         renew = ""
         if r.get("r") is True: renew = " | 🔄已续期"
-        elif r.get("r") is False: renew = " | ❌续期失败"
-        lines.append(f"{s} {r['l']}: +{r['c']}币{dl}{bl}{renew}")
+        elif r.get("r") is False: renew = " | ⚠️需手动续期"
+        lines.append(f"{s} {r['l']}: +{r['c']}币{dl}{bl}{hl}{renew}")
     lines.append(f"\n💰 总计: +{total}币")
     send_tg("\n".join(lines))
     log("完成!")
