@@ -163,10 +163,12 @@ def get_renew_info(s):
 def renew_server(s):
     """Renew server, return True if success"""
     if not SID: return False
-    # Don't follow redirects - check Location header
+    # Add Referer and X-Requested-With for AJAX-like request
     hdr = "/tmp/snrh.txt"
     cmd = ["curl", "-s", "-D", hdr, "--connect-timeout", "20", "--max-time", "25"] + px()
     cmd += ["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
+            "-H", f"Referer: {BASE}/dashboard",
+            "-H", "X-Requested-With: XMLHttpRequest",
             f"{BASE}/renew?id={SID}"]
     try:
         subprocess.run(cmd, timeout=30, capture_output=True)
@@ -178,7 +180,6 @@ def renew_server(s):
         log(f"[renew] Location: {loc}")
         if "success=RENEWED" in loc or "RENEWED" in loc.upper():
             return True
-        # Also check if redirected to dashboard (might be success)
         if "/dashboard" in loc:
             log(f"[renew] Redirected to dashboard (likely success)")
             return True
