@@ -165,6 +165,7 @@ def renew_server(s):
     if not SID: return False
     body = run_curl(["-L", "-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
                      f"{BASE}/renew?id={SID}"], timeout=30)
+    log(f"[renew] Response: {body[:200]}")
     if "success=RENEWED" in body or "RENEWED" in body.upper():
         return True
     return False
