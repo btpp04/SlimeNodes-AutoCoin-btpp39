@@ -161,20 +161,12 @@ def get_renew_info(s):
         return None, None
 
 def renew_server(s):
-    """Renew server, return True if success"""
+    """Renew server using current session"""
     if not SID: return False
-    # Visit dashboard first to activate session
-    log(f"[renew] Activating session via dashboard...")
-    run_curl(["-L", "-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
-              f"{BASE}/dashboard"], timeout=20)
-    time.sleep(1)
-    
-    # Now try renew with proper headers
     hdr = "/tmp/snrh.txt"
     cmd = ["curl", "-s", "-D", hdr, "--connect-timeout", "20", "--max-time", "25"] + px()
     cmd += ["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}",
             "-H", f"Referer: {BASE}/dashboard",
-            "-H", "X-Requested-With: XMLHttpRequest",
             f"{BASE}/renew?id={SID}"]
     try:
         subprocess.run(cmd, timeout=30, capture_output=True)
@@ -186,9 +178,12 @@ def renew_server(s):
         log(f"[renew] Location: {loc}")
         if "success=RENEWED" in loc or "RENEWED" in loc.upper():
             return True
-        if "/dashboard" in loc:
+        if "/dashboard" in loc and "login" not in loc:
             log(f"[renew] Redirected to dashboard (likely success)")
             return True
+        if "/login" in loc:
+            log(f"[renew] OAuth session limited, needs manual renew")
+            return False
     except Exception as e:
         log(f"[renew] Error: {e}")
     return False
@@ -277,7 +272,7 @@ def main():
                         log(f"[{l}] ✅ 服务器已续期")
                         res[-1]["r"] = True
                     else:
-                        log(f"[{l}] ❌ 续期失败")
+                        log(f"[{l}] ⚠️ 续期失败, 需手动续期")
                         res[-1]["r"] = False
                 else:
                     log(f"[{l}] 离到期还有{hours_left:.0f}小时，暂不续期 (>{RENEW_HOURS}h)")
