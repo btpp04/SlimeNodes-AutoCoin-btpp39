@@ -150,13 +150,13 @@ def get_renew_info(s):
     """Get server expiration from dashboard. Returns hours_left or None"""
     if not SID: return None
     import re
-    # Try multiple endpoints
-    for url in [f"{BASE}/servers", f"{BASE}/server/{SID}", f"{BASE}/"]:
+    # Try dashboard domain (different from API domain)
+    DASH = "https://dash.slimenodes.com"
+    for url in [f"{DASH}/servers", f"{DASH}/server/{SID}", f"{BASE}/servers", f"{BASE}/server/{SID}"]:
         try:
             body = run_curl(["-H", f"User-Agent: {UA}", "-H", f"Cookie: {ck(s)}", url], timeout=15)
             if "/login" in body[:200]:
-                continue  # Not authenticated
-            # Parse "expires in X hours"
+                continue
             m = re.search(r'expires? in (\d+) hours?', body, re.IGNORECASE)
             if m:
                 return int(m.group(1))
