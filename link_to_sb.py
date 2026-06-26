@@ -31,13 +31,36 @@ def parse_vmess(link):
 def parse_vless(link):
     parsed = urllib.parse.urlparse(link)
     query = urllib.parse.parse_qs(parsed.query)
-    outbound = {"type": "vless", "tag": "vless-out", "server": parsed.hostname,
-        "server_port": parsed.port, "uuid": parsed.username}
-    if query.get("security") == ["tls"]:
+    # Some VLESS links base64-encode the entire netloc (auth@host:port)
+    raw_netloc = parsed.netloc or parsed.path.split("?")[0]
+    if not parsed.hostname or not parsed.username:
+        try:
+            # Try decoding base64 netloc
+            decoded = base64.b64decode(raw_netloc.split("?")[0] + "==").decode()
+            if "@" in decoded:
+                userpart, hostpart = decoded.rsplit("@", 1)
+                uuid = userpart.split(":")[-1] if ":" in userpart else userpart
+                host = hostpart.split(":")[0]
+                port = int(hostpart.split(":")[1]) if ":" in hostpart else None
+            else:
+                uuid, host, port = decoded, parsed.hostname, parsed.port
+        except Exception:
+            uuid, host, port = parsed.username, parsed.hostname, parsed.port
+    else:
+        uuid, host, port = parsed.username, parsed.hostname, parsed.port
+    outbound = {"type": "vless", "tag": "vless-out",
+        "server": host, "server_port": port, "uuid": uuid}
+    is_tls = query.get("security") == ["tls"] or query.get("tls") == ["1"]
+    is_reality = query.get("xtls") == ["2"] or ("pbk" in query and "sid" in query)
+    if is_tls:
         alpn_list = query.get("alpn", [""])[0].split(",") if query.get("alpn") else []
-        outbound["tls"] = {"enabled": True, "server_name": query.get("sni", [None])[0] or "",
+        outbound["tls"] = {"enabled": True, "server_name": query.get("sni", [None])[0] or query.get("peer", [None])[0] or "",
             "insecure": query.get("allowInsecure", ["0"])[0] == "1", "alpn": alpn_list,
             "utls": {"enabled": True, "fingerprint": query.get("fp", ["chrome"])[0]}}
+        if is_reality:
+            outbound["tls"]["reality"] = {"enabled": True,
+                "public_key": query.get("pbk", [""])[0],
+                "short_id": query.get("sid", [""])[0]}
     if query.get("type") == ["ws"]:
         transport = {"type": "ws", "headers": {"Host": query.get("host", [""])[0]} if query.get("host") else {}}
         path = query.get("path", ["/"])[0]
