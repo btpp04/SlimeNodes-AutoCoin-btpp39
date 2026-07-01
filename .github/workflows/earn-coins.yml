@@ -14,7 +14,7 @@ jobs:
 
       - name: Setup sing-box proxy
         run: |
-          curl -sL https://github.com/SagerNet/sing-box/releases/download/v1.11.3/sing-box-1.11.3-linux-amd64.tar.gz | tar xz
+          curl -sL https://github.com/SagerNet/sing-box/releases/download/v1.10.0/sing-box-1.11.3-linux-amd64.tar.gz | tar xz
           mv sing-box-1.11.3-linux-amd64/sing-box /usr/local/bin/
           python3 link_to_sb.py "$VLINK" > /tmp/sing-box.json
           sing-box run -c /tmp/sing-box.json &
