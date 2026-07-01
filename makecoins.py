@@ -11,6 +11,7 @@ MAX = int(os.environ.get("MAX_ADS", "20"))
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
 TGT = os.environ.get("TG_BOT_TOKEN", "")
 TGC = os.environ.get("TG_CHAT_ID", "")
+REPO = os.environ.get("GITHUB_REPOSITORY", "")
 PX = os.environ.get("SOCKS_PROXY", os.environ.get("HTTP_PROXY", ""))
 SESSION = os.environ.get("SLIME_SESSION", "")
 SERVER_ID = os.environ.get("SERVER_ID", "")
@@ -200,7 +201,7 @@ def main():
     c, d, b1, renewed, hours_left = process(SESSION, label)
 
     # TG notification
-    lines = [f"<b>🟢 SlimeNodes 刷币</b>  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"]
+    lines = [f"<b>[{REPO}] 🟢 SlimeNodes 刷币</b>  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"]
     s = "✅" if c > 0 else "❌"
     dl = " (上限)" if d else ""
     bl = f" | 余额{b1}" if b1 is not None else ""
@@ -224,3 +225,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
